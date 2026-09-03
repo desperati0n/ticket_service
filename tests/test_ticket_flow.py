@@ -1,6 +1,7 @@
 """工单流程测试覆盖终端输入、API、业务写入和错误分支。"""
 
 from fastapi.testclient import TestClient
+from pathlib import Path
 
 from app.main import app
 from app.cli import format_event, main as cli_main, prompt_request
@@ -32,6 +33,17 @@ def test_repository_converts_mysql_port_from_env():
 
     repository = MySQLRepository(Snowflake())
     assert repository.engine.url.port == 3306
+
+
+def test_mysql_seed_contains_many_to_many_data():
+    """初始化脚本应提供至少 10 名员工、10 项资产和多对多关联表。"""
+    sql = Path("mysql/init.sql").read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS employee_assets" in sql
+    employee_values = sql.split("INSERT INTO employees", 1)[1].split("ON DUPLICATE KEY", 1)[0]
+    asset_values = sql.split("INSERT INTO assets", 1)[1].split("ON DUPLICATE KEY", 1)[0]
+    assert employee_values.count("),") + 1 >= 10
+    assert asset_values.count("),") + 1 >= 10
+    assert sql.count("INSERT IGNORE INTO employee_assets") == 1
 
 
 def test_structured_request_stream_creates_ticket(repositories):
