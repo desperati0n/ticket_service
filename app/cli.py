@@ -1,10 +1,12 @@
+"""本模块提供工单创建和查询的终端交互界面。"""
+
 from collections.abc import Callable
 from pathlib import Path
 import sys
 import traceback
 
 if __package__ in (None, ""):
-    # Support IDEs that run this file directly instead of `python -m app.cli`.
+    # 兼容 IDE 直接运行文件而不是使用 python -m app.cli。
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from app.main import flow
     from app.schemas import TicketRequest
@@ -14,21 +16,19 @@ else:
 
 
 def prompt_request(input_fn: Callable[[str], str] = input) -> TicketRequest:
-    """Collect one structured request interactively for the terminal demo."""
+    """通过终端提问收集一条结构化工单请求。"""
     employee_no = input_fn("工号：").strip()
     asset_description = input_fn("哪个资产有问题（例如：Dell 显示器）：").strip()
     problem_description = input_fn("具体问题是什么：").strip()
-    urgency = input_fn("是否紧急？输入 y/N：").strip().lower()
-    priority = "urgent" if urgency in {"y", "yes", "是", "紧急"} else "normal"
     return TicketRequest(
         employee_no=employee_no,
         asset_description=asset_description,
         problem_description=problem_description,
-        priority=priority,
     )
 
 
 def main() -> int:
+    """运行终端菜单直到操作完成或用户退出。"""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print("IT 运维助手 Demo（终端版，无 AI）")
@@ -52,6 +52,7 @@ def main() -> int:
 
 
 def create_ticket_interactively() -> int:
+    """询问工单信息并打印每个流程事件或异常。"""
     print("\n开始创建工单，请依次回答：")
     try:
         request = prompt_request()
@@ -70,6 +71,7 @@ def create_ticket_interactively() -> int:
 
 
 def query_ticket_interactively() -> int:
+    """按 ID 查询工单，未命中时按员工工号查询历史工单。"""
     try:
         ticket_id = int(input("请输入工单 ID：").strip())
         ticket = flow.mysql.get_ticket(ticket_id)
@@ -95,6 +97,7 @@ def query_ticket_interactively() -> int:
 
 
 def list_tickets_interactively() -> int:
+    """查询全部工单或按可选员工工号筛选。"""
     try:
         employee_no = input("员工工号（直接回车查询全部）：").strip() or None
         tickets = flow.mysql.list_tickets(employee_no)
@@ -110,13 +113,13 @@ def list_tickets_interactively() -> int:
 
 
 def print_tickets(tickets: list[dict]) -> None:
+    """为每张工单打印一行精简信息。"""
     print(f"[SUCCESS] 共 {len(tickets)} 条工单：")
     for ticket in tickets:
         print(
             f"  ID={ticket.get('id')} | 员工={ticket.get('employee_no', ticket.get('employee_id'))} "
             f"| 资产={ticket.get('asset_name', ticket.get('asset_id'))} "
-            f"| 优先级={ticket.get('priority')} | 状态={ticket.get('status')} "
-            f"| 问题={ticket.get('issue')}"
+            f"| 状态={ticket.get('status')} | 问题={ticket.get('issue')}"
         )
 
 

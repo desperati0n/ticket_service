@@ -1,3 +1,5 @@
+"""本模块编排请求记录、员工查询、资产查询和工单创建流程。"""
+
 import uuid
 from collections.abc import Iterator
 
@@ -6,17 +8,22 @@ from .schemas import TicketRequest
 
 
 class TicketFlow:
+    """工单流程执行无 AI 的结构化报修业务。"""
+
     def __init__(self, mysql: MemoryMySQLRepository, mongo: MemoryMongoRepository):
+        """使用业务仓储和日志仓储初始化流程。"""
         self.mysql = mysql
         self.mongo = mongo
 
     def run(self, request: TicketRequest) -> Iterator[dict]:
+        """创建工单并依次产出处理事件。"""
         request_id = request.request_id or str(uuid.uuid4())
         payload = request.model_dump(exclude_none=True)
         log = self.mongo.start_log(request_id, payload)
         seq = 0
 
         def emit(step: str, status: str, data: dict | None = None):
+            """创建、保存并返回一个流程事件。"""
             nonlocal seq
             seq += 1
             event = {"seq": seq, "step": step, "status": status, "data": data or {}, "request_id": request_id}
@@ -45,7 +52,6 @@ class TicketFlow:
             employee=employee,
             asset=asset,
             issue=request.problem_description or "",
-            priority=request.priority,
         )
         yield emit("ticket_created", "success", {"ticket_id": ticket["id"], "status": ticket["status"]})
         self.mongo.finish_log(log, status="success", ticket_id=ticket["id"])

@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS tickets (
   employee_id BIGINT NOT NULL,
   asset_id BIGINT NULL,
   issue TEXT NOT NULL,
-  priority VARCHAR(16) NOT NULL DEFAULT 'normal',
   status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
   created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT fk_tickets_employee FOREIGN KEY (employee_id) REFERENCES employees(id),

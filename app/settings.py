@@ -1,3 +1,5 @@
+"""本模块从项目根目录的 .env 文件读取环境配置。"""
+
 from functools import lru_cache
 from pathlib import Path
 
@@ -5,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """配置模型将环境变量映射为带类型的运行参数。"""
     app_name: str = "IT运维助手 Demo"
     app_env: str = "development"
     storage_backend: str = "mysql_mongo"
@@ -31,4 +34,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """返回当前进程复用的配置对象。"""
     return Settings()
