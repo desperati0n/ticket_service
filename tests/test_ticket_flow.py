@@ -2,10 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from app.main import app, mysql_repository, mongo_repository
+from app.main import app
 from app.cli import format_event, main as cli_main, prompt_request
-from app.ids import Snowflake
-from app.repositories import MemoryMySQLRepository
 
 
 client = TestClient(app)
@@ -36,8 +34,9 @@ def test_settings_load_project_env_from_any_working_directory():
     assert settings.mongo_database == "ticket_service"
 
 
-def test_structured_request_stream_creates_ticket():
+def test_structured_request_stream_creates_ticket(repositories):
     """结构化请求应创建待处理工单并完成日志记录。"""
+    mysql_repository, mongo_repository = repositories
     before = len(mysql_repository.tickets)
     response = client.post(
         "/ticket/stream",
@@ -57,7 +56,7 @@ def test_structured_request_stream_creates_ticket():
     assert mongo_repository.logs[-1]["status"] == "success"
 
 
-def test_unknown_employee_returns_error_event():
+def test_unknown_employee_returns_error_event(repositories):
     """不存在的员工应返回明确错误事件且不创建工单。"""
     response = client.post(
         "/ticket/stream",
@@ -72,7 +71,7 @@ def test_unknown_employee_returns_error_event():
     assert "event: done" not in response.text
 
 
-def test_text_input_is_reserved_for_ai():
+def test_text_input_is_reserved_for_ai(repositories):
     """未启用 AI 时自然语言入口应返回保留提示。"""
     response = client.post("/ticket/stream", json={"input_type": "text", "message": "显示器坏了"})
     assert response.status_code == 200
@@ -101,9 +100,9 @@ def test_cli_formats_failed_event_without_dumping_mapping():
     assert "{'code'" not in message
 
 
-def test_memory_repository_supports_update_and_delete():
-    """内存仓储应支持工单修改和删除。"""
-    repository = MemoryMySQLRepository(Snowflake())
+def test_test_repository_supports_update_and_delete(repositories):
+    """测试仓储替身应支持工单修改和删除。"""
+    repository, _ = repositories
     employee = repository.get_employee_by_no("10086")
     ticket = repository.create_ticket(employee=employee, asset=None, issue="旧问题")
     updated = repository.update_ticket(ticket["id"], issue="新问题", status="RESOLVED")

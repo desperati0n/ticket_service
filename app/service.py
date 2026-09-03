@@ -2,15 +2,15 @@
 
 import uuid
 from collections.abc import Iterator
+from typing import Any
 
-from .repositories import MemoryMongoRepository, MemoryMySQLRepository
 from .schemas import TicketRequest
 
 
 class TicketFlow:
     """工单流程执行无 AI 的结构化报修业务。"""
 
-    def __init__(self, mysql: MemoryMySQLRepository, mongo: MemoryMongoRepository):
+    def __init__(self, mysql: Any, mongo: Any):
         """使用业务仓储和日志仓储初始化流程。"""
         self.mysql = mysql
         self.mongo = mongo

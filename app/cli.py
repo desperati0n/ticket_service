@@ -164,16 +164,17 @@ def delete_ticket_interactively(input_fn: Callable[[str], str] | None = None, ou
 def format_event(event: dict) -> str:
     """将流程事件转换成适合终端阅读的一行文本。"""
     data = event.get("data") or {}
+    prefix = f"seq={event.get('seq')} " if event.get("seq") is not None else ""
     if event.get("status") == "failed":
         code = data.get("code")
         message = data.get("message", "处理失败")
         suffix = f"（{code}）" if code else ""
-        return f"[FAILED] {event.get('step')}: {message}{suffix}"
+        return f"[FAILED] {prefix}{event.get('step')}: {message}{suffix}"
     if event.get("step") == "ticket_created":
-        return f"[SUCCESS] 工单已创建：ID={data.get('ticket_id')}，状态={data.get('status')}"
+        return f"[SUCCESS] {prefix}工单已创建：ID={data.get('ticket_id')}，状态={data.get('status')}"
     if event.get("step") == "done":
-        return f"[SUCCESS] 处理完成：工单 ID={data.get('ticket_id')}"
-    return f"[SUCCESS] {event.get('step')}"
+        return f"[SUCCESS] {prefix}处理完成：工单 ID={data.get('ticket_id')}"
+    return f"[SUCCESS] {prefix}{event.get('step')}"
 
 
 def print_cli_error(exc: Exception, output_fn: Callable[[str], None]) -> None:

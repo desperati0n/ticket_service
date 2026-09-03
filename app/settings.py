@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     """配置模型将环境变量映射为带类型的运行参数。"""
     app_name: str = "IT运维助手 Demo"
     app_env: str = "development"
-    storage_backend: str = "mysql_mongo"
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
     mysql_database: str = "ticket_service"
