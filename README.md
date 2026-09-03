@@ -40,6 +40,8 @@ docker compose stop adminer mongo-express
 
 ## 请求示例
 
+项目根目录提供可直接导入 Swagger UI、Postman、Insomnia 等工具的 OpenAPI 规范文件：[`openapi.json`](openapi.json)。导入后将服务器地址设为 `http://127.0.0.1:8000`，即可使用内置示例测试健康检查和两个 SSE 接口。
+
 ```powershell
 curl -N -X POST http://127.0.0.1:8000/ticket/stream `
   -H "Content-Type: application/json" `

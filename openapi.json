@@ -1,0 +1,343 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "IT 运维助手 Demo API",
+    "description": "内部 IT 运维助手的健康检查、结构化报修和自然语言 Agent 接口。流式接口使用 Server-Sent Events（SSE）返回处理进度。",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "本地开发服务"
+    }
+  ],
+  "tags": [
+    {
+      "name": "system",
+      "description": "服务状态"
+    },
+    {
+      "name": "tickets",
+      "description": "结构化工单"
+    },
+    {
+      "name": "agent",
+      "description": "自然语言工单 Agent"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["system"],
+        "summary": "健康检查",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "服务正常运行",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "environment": "development"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ticket/stream": {
+      "post": {
+        "tags": ["tickets"],
+        "summary": "创建结构化维修工单（SSE）",
+        "description": "校验员工和员工资产后创建状态为 PENDING 的工单，并按步骤持续推送 SSE 事件。设置 input_type=text 时会返回 AI_NOT_ENABLED 兼容错误事件。",
+        "operationId": "create_ticket_stream",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketRequest"
+              },
+              "examples": {
+                "structured": {
+                  "summary": "结构化报修",
+                  "value": {
+                    "employee_no": "10086",
+                    "asset_description": "Dell 显示器",
+                    "problem_description": "无法点亮，急用",
+                    "request_id": "req-demo-001"
+                  }
+                },
+                "text_compatibility": {
+                  "summary": "文本兼容入口（当前未启用 AI）",
+                  "value": {
+                    "input_type": "text",
+                    "message": "我的 Dell 显示器坏了，工号 10086"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 事件流；连接关闭表示流程结束",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "每条消息由 event: <step>、data: <JSON> 和空行组成。"
+                },
+                "example": "event: received\ndata: {\"seq\":1,\"step\":\"received\",\"status\":\"success\",\"data\":{\"input_type\":\"structured\"},\"request_id\":\"req-demo-001\"}\n\nevent: done\ndata: {\"seq\":6,\"step\":\"done\",\"status\":\"success\",\"data\":{\"success\":true,\"ticket_id\":123},\"request_id\":\"req-demo-001\"}\n\n"
+              }
+            },
+            "x-sse-events": {
+              "$ref": "#/components/schemas/TicketSSEEvent"
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/chat/stream": {
+      "post": {
+        "tags": ["agent"],
+        "summary": "处理自然语言报修（SSE）",
+        "description": "调用 LangChain Agent 自动匹配员工、资产和工单工具，实时推送模型及工具调用过程。需要在服务端 .env 配置模型相关变量。",
+        "operationId": "chat_stream",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequest"
+              },
+              "example": {
+                "message": "我的 Dell 显示器坏了，工号 10086，急用",
+                "conversation_id": "conversation-demo-001",
+                "request_id": "req-agent-001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 事件流；最终事件 step 通常为 answer 或 done",
+            "headers": {
+              "Cache-Control": {
+                "description": "no-cache",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Accel-Buffering": {
+                "description": "服务端设置为 no 以避免代理缓冲",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "每条消息由 event: <step>、data: <JSON> 和空行组成。"
+                },
+                "example": "event: model_started\ndata: {\"seq\":2,\"step\":\"model_started\",\"status\":\"success\",\"data\":{\"tool_limit\":15},\"request_id\":\"req-agent-001\",\"conversation_id\":\"conversation-demo-001\"}\n\nevent: answer\ndata: {\"seq\":4,\"step\":\"answer\",\"status\":\"success\",\"data\":{\"message\":\"报修已提交，工单状态为待处理。\"},\"request_id\":\"req-agent-001\",\"conversation_id\":\"conversation-demo-001\"}\n\n"
+              }
+            },
+            "x-sse-events": {
+              "$ref": "#/components/schemas/AgentSSEEvent"
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status", "environment"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          },
+          "environment": {
+            "type": "string",
+            "example": "development"
+          }
+        }
+      },
+      "TicketRequest": {
+        "type": "object",
+        "description": "默认 input_type=structured 时必须提供 employee_no、asset_description 和 problem_description；input_type=text 时必须提供 message。",
+        "properties": {
+          "input_type": {
+            "type": "string",
+            "enum": ["structured", "text"],
+            "default": "structured",
+            "description": "输入模式。"
+          },
+          "employee_no": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "员工工号（结构化模式必填）。"
+          },
+          "asset_description": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "故障资产名称、品牌、型号或资产编号（结构化模式必填）。"
+          },
+          "problem_description": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "完整故障现象（结构化模式必填）。"
+          },
+          "message": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "自然语言报修消息（text 模式必填）。"
+          },
+          "request_id": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "可选幂等/追踪请求 ID；不传时由服务端生成。"
+          }
+        }
+      },
+      "AgentRequest": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "description": "用户当前发送的自然语言消息。"
+          },
+          "conversation_id": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "可选会话 ID；用于关联历史上下文。"
+          },
+          "request_id": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "description": "可选请求 ID；不传时由服务端生成。"
+          }
+        }
+      },
+      "SSEEvent": {
+        "type": "object",
+        "required": ["seq", "step", "status", "data", "request_id"],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "step": {
+            "type": "string",
+            "description": "事件步骤，如 received、employee_lookup、ticket_created、answer、done。"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["started", "success", "failed"]
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TicketSSEEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SSEEvent"
+          }
+        ],
+        "description": "结构化工单流程事件。成功完成时 done.data.success=true 并包含 ticket_id。"
+      },
+      "AgentSSEEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SSEEvent"
+          },
+          {
+            "type": "object",
+            "required": ["conversation_id"],
+            "properties": {
+              "conversation_id": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "自然语言 Agent 事件，可能包含 model_started、tool_started、tool_finished、answer、error 和 done。"
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": ["detail"],
+        "properties": {
+          "detail": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationErrorItem"
+            }
+          }
+        }
+      },
+      "ValidationErrorItem": {
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "properties": {
+          "loc": {
+            "type": "array",
+            "items": {
+              "type": ["string", "integer"]
+            }
+          },
+          "msg": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "请求体校验失败",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "example": {
+              "detail": [
+                {
+                  "loc": ["body", "message"],
+                  "msg": "String should have at least 1 character",
+                  "type": "string_too_short"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
