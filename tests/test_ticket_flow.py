@@ -38,6 +38,7 @@ def test_structured_request_stream_creates_ticket():
     assert "event: done" in response.text
     assert len(mysql_repository.tickets) == before + 1
     assert mysql_repository.tickets[-1]["status"] == "PENDING"
+    assert mysql_repository.get_ticket(mysql_repository.tickets[-1]["id"])["priority"] == "urgent"
     assert mongo_repository.logs[-1]["status"] == "success"
 
 

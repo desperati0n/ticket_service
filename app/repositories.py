@@ -54,6 +54,9 @@ class MemoryMySQLRepository:
         self.tickets.append(ticket)
         return ticket
 
+    def get_ticket(self, ticket_id: int) -> dict | None:
+        return next((ticket for ticket in self.tickets if ticket["id"] == ticket_id), None)
+
 
 class MemoryMongoRepository:
     def __init__(self):
@@ -72,4 +75,3 @@ class MemoryMongoRepository:
         log["ticket_id"] = ticket_id
         if error:
             log["error"] = error
-

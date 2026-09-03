@@ -50,6 +50,22 @@ class MySQLRepository:
         return {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id if asset else None,
                 "issue": issue, "priority": priority, "status": "PENDING", "created_at": created_at.isoformat()}
 
+    def get_ticket(self, ticket_id: int) -> dict | None:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT t.id, t.employee_id, e.employee_no, e.name AS employee_name,
+                           t.asset_id, a.asset_code, a.name AS asset_name,
+                           t.issue, t.priority, t.status, t.created_at
+                    FROM tickets t
+                    JOIN employees e ON e.id = t.employee_id
+                    LEFT JOIN assets a ON a.id = t.asset_id
+                    WHERE t.id = :ticket_id
+                """),
+                {"ticket_id": ticket_id},
+            ).mappings().first()
+        return dict(row) if row else None
+
 
 class MongoRepository:
     def __init__(self, settings):
