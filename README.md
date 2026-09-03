@@ -11,13 +11,32 @@ uvicorn app.main:app --reload
 
 配置统一放在根目录 `.env`，示例见 `.env.example`。程序始终使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务；测试中的仓储替身仅位于 `tests/`，不会进入生产代码。
 
-如需启动数据库服务：
+如需启动数据库服务和可视化管理工具：
 
 ```powershell
-docker compose up -d mysql mongo
+docker compose up -d mysql mongo adminer mongo-express
 ```
 
 MySQL 首次创建数据卷时会执行 `mysql/init.sql`，建立三张业务表并写入演示员工/资产数据；MongoDB 只需启动服务，`conversation_logs` 集合会在首次写入时自动创建。
+
+## 数据库可视化操作
+
+Compose 会下载并启动两个常用的 Web 管理工具：
+
+| 工具 | 浏览器地址 | 用途 |
+| --- | --- | --- |
+| Adminer | <http://127.0.0.1:8080> | MySQL 表、SQL 和数据 |
+| Mongo Express | <http://127.0.0.1:8081> | MongoDB 数据库和集合 |
+
+Adminer 登录时填写：系统 `MySQL`，服务器 `mysql`（从宿主机访问也可填 `127.0.0.1:3306`），用户名 `ticket_service`，密码取 `.env` 的 `MYSQL_PASSWORD`，数据库 `ticket_service`。
+
+Mongo Express 使用 `.env` 中的 `MONGO_EXPRESS_USERNAME` / `MONGO_EXPRESS_PASSWORD` 登录，进入后选择 `ticket_service` 数据库和 `conversation_logs` 集合。工具容器通过 Docker 网络中的 `mysql`、`mongo` 服务名连接，和程序使用的宿主机端口连接的是同一份数据。
+
+停止工具但保留数据库数据：
+
+```powershell
+docker compose stop adminer mongo-express
+```
 
 ## 请求示例
 

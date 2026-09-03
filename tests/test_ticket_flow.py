@@ -34,6 +34,17 @@ def test_settings_load_project_env_from_any_working_directory():
     assert settings.mongo_database == "ticket_service"
 
 
+def test_database_gui_settings_are_loaded_from_env_example():
+    """数据库可视化工具端口和认证配置应与 Compose 默认值一致。"""
+    from app.settings import Settings
+
+    settings = Settings(_env_file="G:/实习/ticket_service/.env.example")
+    assert settings.adminer_port == 8080
+    assert settings.mongo_express_port == 8081
+    assert settings.mongo_express_auth_enabled is True
+    assert settings.mongo_express_username == "admin"
+
+
 def test_structured_request_stream_creates_ticket(repositories):
     """结构化请求应创建待处理工单并完成日志记录。"""
     mysql_repository, mongo_repository = repositories

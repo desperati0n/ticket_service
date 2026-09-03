@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     mongo_uri: str = "mongodb://127.0.0.1:27017"
     mongo_database: str = "ticket_service"
     mongo_collection: str = "conversation_logs"
+    adminer_port: int = 8080
+    mongo_express_port: int = 8081
+    mongo_express_auth_enabled: bool = True
+    mongo_express_username: str = "admin"
+    mongo_express_password: str = "change-me"
     sse_retry_ms: int = 3000
     model_name: str = ""
     model_temperature: float = 0.0
