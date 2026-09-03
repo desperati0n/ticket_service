@@ -1,7 +1,6 @@
 """工单 AI 主体：提示词、Tool 调用循环和会话事件流。"""
 
 import json
-import os
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -10,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from .schemas import AgentRequest, AgentSessionState
 from .tools import build_ticket_tools
+from ..model import init_model
 
 
 MAX_TOOL_CALLS = 15
@@ -35,23 +35,10 @@ class TicketAgent:
         self.model = model
 
     def _resolve_model(self) -> Any:
-        """优先使用测试或上层注入的模型，否则按根目录环境变量创建 ChatOpenAI。"""
+        """优先使用测试或上层注入的模型，否则按环境变量初始化 ChatModel。"""
         if self.model is not None:
             return self.model
-
-        model_name = os.getenv("MODEL_NAME", "").strip()
-        if not model_name:
-            raise RuntimeError("MODEL_NOT_CONFIGURED: 请在 .env 中配置 MODEL_NAME")
-        if not os.getenv("OPENAI_API_KEY", "").strip():
-            raise RuntimeError("MODEL_API_KEY_NOT_CONFIGURED: 请在 .env 中配置 OPENAI_API_KEY")
-
-        from langchain_openai import ChatOpenAI
-
-        kwargs: dict[str, Any] = {"model": model_name, "temperature": 0}
-        base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-        if base_url:
-            kwargs["base_url"] = base_url
-        return ChatOpenAI(**kwargs)
+        return init_model()
 
     def _history(self, conversation_id: str) -> list[dict[str, str]]:
         """读取已完成会话中的用户和助手文本；旧仓储替身没有该能力时返回空历史。"""
