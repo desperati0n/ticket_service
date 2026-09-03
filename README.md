@@ -46,7 +46,7 @@ curl -N -X POST http://127.0.0.1:8000/ticket/stream `
   -d '{"employee_no":"10086","asset_description":"Dell 显示器","problem_description":"无法点亮"}'
 ```
 
-自然语言入口使用 LangChain Agent，接口为 `POST /chat/stream`。Agent 会按照“提取信息 → 验证员工 → 验证员工资产 → 创建待处理工单”的顺序调用工具，最多执行 15 次工具调用；每次模型、工具和最终回复都会通过 SSE 推送，并记录到 MongoDB 的 `conversation_logs` 集合。
+自然语言入口使用 LangChain Agent，接口为 `POST /chat/stream`。Agent 支持工单增删改查；创建报修时会按照“提取信息 → 验证员工 → 验证员工资产 → 创建待处理工单”的顺序调用工具，最多执行 15 次工具调用。每次模型、工具和最终回复都会通过 SSE 推送，并记录到 MongoDB 的 `conversation_logs` 集合。
 
 模型配置示例（统一写入根目录 `.env`）：
 

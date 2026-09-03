@@ -8,7 +8,11 @@ from ..operations import check_asset_belongs_to_employee, check_employee, check_
 from .schemas import (
     AgentSessionState,
     CreateTicketInput,
+    DeleteTicketInput,
+    ListTicketsInput,
+    TicketIdInput,
     ToolResult,
+    UpdateTicketInput,
     VerifiedAsset,
     VerifiedEmployee,
     VerifyAssetInput,
@@ -159,4 +163,60 @@ def build_ticket_tools(mysql: Any, state: AgentSessionState) -> list[BaseTool]:
             data={"ticket_id": ticket["id"], "status": ticket["status"]},
         )
 
-    return [verify_employee, verify_employee_asset, create_ticket]
+    @tool("get_ticket", args_schema=TicketIdInput)
+    def get_ticket(ticket_id: int) -> dict[str, Any]:
+        """根据工单 ID 查询工单详情。找不到时返回错误结果，不要编造工单信息。"""
+        ticket = mysql.get_ticket(ticket_id)
+        if ticket is None:
+            return _result(False, "TICKET_NOT_FOUND", "未找到对应工单", retryable=True)
+        return _result(True, "TICKET_FOUND", "已找到工单", data={"ticket": ticket})
+
+    @tool("list_tickets", args_schema=ListTicketsInput)
+    def list_tickets(employee_no: str | None = None) -> dict[str, Any]:
+        """查询工单列表。提供员工工号时只查询该员工的历史工单，不提供时查询全部工单。"""
+        tickets = mysql.list_tickets(employee_no.strip() if employee_no else None)
+        return _result(
+            True,
+            "TICKETS_LISTED",
+            "工单列表查询完成",
+            data={"count": len(tickets), "tickets": tickets},
+        )
+
+    @tool("update_ticket", args_schema=UpdateTicketInput)
+    def update_ticket(ticket_id: int, issue: str | None = None, status: str | None = None) -> dict[str, Any]:
+        """修改工单的问题描述或状态。必须提供至少一个修改字段，状态只能使用允许的枚举值。"""
+        current = mysql.get_ticket(ticket_id)
+        if current is None:
+            return _result(False, "TICKET_NOT_FOUND", "未找到对应工单", retryable=True)
+        updated = mysql.update_ticket(ticket_id, issue=issue, status=status)
+        if updated is None:
+            return _result(False, "TICKET_UPDATE_FAILED", "工单更新失败，请稍后重试")
+        return _result(True, "TICKET_UPDATED", "工单已更新", data={"ticket": updated})
+
+    @tool("delete_ticket", args_schema=DeleteTicketInput)
+    def delete_ticket(ticket_id: int, confirmed: bool = False) -> dict[str, Any]:
+        """删除工单。第一次调用必须保持 confirmed=false 以取得待删除详情；只有用户明确确认后才能传 true 执行删除。"""
+        ticket = mysql.get_ticket(ticket_id)
+        if ticket is None:
+            return _result(False, "TICKET_NOT_FOUND", "未找到对应工单", retryable=True)
+        if not confirmed:
+            return _result(
+                False,
+                "DELETE_CONFIRMATION_REQUIRED",
+                "删除工单属于不可逆操作，需要用户明确确认",
+                data={"ticket": ticket},
+                retryable=True,
+            )
+        if not mysql.delete_ticket(ticket_id):
+            return _result(False, "TICKET_DELETE_FAILED", "工单删除失败，请稍后重试")
+        return _result(True, "TICKET_DELETED", "工单已删除", data={"ticket_id": ticket_id})
+
+    return [
+        verify_employee,
+        verify_employee_asset,
+        create_ticket,
+        get_ticket,
+        list_tickets,
+        update_ticket,
+        delete_ticket,
+    ]

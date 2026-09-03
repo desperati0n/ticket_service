@@ -1,8 +1,11 @@
 """AI 工单代理使用的 Tool 参数、结果和服务端会话状态。"""
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+TicketStatus = Literal["PENDING", "IN_PROGRESS", "RESOLVED", "CANCELLED"]
 
 
 class VerifyEmployeeInput(BaseModel):
@@ -38,6 +41,46 @@ class AgentRequest(BaseModel):
     message: str = Field(min_length=1, description="用户当前发送的自然语言消息")
     conversation_id: str | None = Field(default=None, min_length=1)
     request_id: str | None = Field(default=None, min_length=1)
+
+
+class TicketIdInput(BaseModel):
+    """按工单 ID 操作的公共输入。"""
+
+    ticket_id: int = Field(gt=0, description="正整数工单 ID")
+
+
+class ListTicketsInput(BaseModel):
+    """查询工单列表的输入。"""
+
+    employee_no: str | None = Field(
+        default=None,
+        min_length=1,
+        description="可选员工工号；不传时查询全部工单。",
+    )
+
+
+class UpdateTicketInput(BaseModel):
+    """修改工单的输入。"""
+
+    ticket_id: int = Field(gt=0, description="正整数工单 ID")
+    issue: str | None = Field(default=None, min_length=1, description="新的问题描述")
+    status: TicketStatus | None = Field(default=None, description="新的工单状态")
+
+    @model_validator(mode="after")
+    def validate_changes(self) -> "UpdateTicketInput":
+        """至少要求一个修改字段。"""
+        if self.issue is None and self.status is None:
+            raise ValueError("at least one of issue or status is required")
+        return self
+
+
+class DeleteTicketInput(TicketIdInput):
+    """删除工单的输入。"""
+
+    confirmed: bool = Field(
+        default=False,
+        description="只有用户在当前对话中明确确认删除时才能传 true。",
+    )
 
 
 class ToolResult(BaseModel):

@@ -14,10 +14,46 @@ def test_agent_tools_expose_clear_names_and_schemas(repositories):
     mysql, _ = repositories
     tools, _ = _tools_by_name(mysql)
 
-    assert set(tools) == {"verify_employee", "verify_employee_asset", "create_ticket"}
+    assert set(tools) == {
+        "verify_employee",
+        "verify_employee_asset",
+        "create_ticket",
+        "get_ticket",
+        "list_tickets",
+        "update_ticket",
+        "delete_ticket",
+    }
     assert set(tools["verify_employee"].args) == {"employee_no"}
     assert set(tools["verify_employee_asset"].args) == {"asset_description"}
     assert set(tools["create_ticket"].args) == {"problem_description"}
+    assert set(tools["get_ticket"].args) == {"ticket_id"}
+    assert set(tools["list_tickets"].args) == {"employee_no"}
+    assert set(tools["update_ticket"].args) == {"ticket_id", "issue", "status"}
+    assert set(tools["delete_ticket"].args) == {"ticket_id", "confirmed"}
+
+
+def test_agent_tools_support_ticket_crud_operations(repositories):
+    """Agent 应能通过独立 Tool 完成工单查询、列表、更新和删除。"""
+    mysql, _ = repositories
+    tools, _ = _tools_by_name(mysql)
+    employee = mysql.get_employee_by_no("10086")
+    asset = mysql.assets[0]
+    ticket = mysql.create_ticket(employee=employee, asset=asset, issue="旧问题")
+
+    found = tools["get_ticket"].invoke({"ticket_id": ticket["id"]})
+    listed = tools["list_tickets"].invoke({"employee_no": "10086"})
+    updated = tools["update_ticket"].invoke(
+        {"ticket_id": ticket["id"], "issue": "新问题", "status": "IN_PROGRESS"}
+    )
+    pending_delete = tools["delete_ticket"].invoke({"ticket_id": ticket["id"]})
+    deleted = tools["delete_ticket"].invoke({"ticket_id": ticket["id"], "confirmed": True})
+
+    assert found["code"] == "TICKET_FOUND"
+    assert listed["data"]["count"] == 1
+    assert updated["data"]["ticket"]["status"] == "IN_PROGRESS"
+    assert pending_delete["code"] == "DELETE_CONFIRMATION_REQUIRED"
+    assert mysql.get_ticket(ticket["id"]) is None
+    assert deleted["code"] == "TICKET_DELETED"
 
 
 def test_agent_tools_enforce_employee_asset_ticket_order(repositories):
