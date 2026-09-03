@@ -153,6 +153,28 @@ def test_agent_returns_configuration_error_without_model_settings(repositories, 
     assert mongo.logs[0]["status"] == "failed"
 
 
+def test_agent_initializes_model_from_provider_and_name(repositories, monkeypatch):
+    """未注入测试模型时应直接使用环境变量调用 init_chat_model。"""
+    import app.agent.agent as agent_module
+
+    captured = {}
+
+    def fake_init_chat_model(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(agent_module, "init_chat_model", fake_init_chat_model)
+    monkeypatch.setenv("MODEL_PROVIDER", "anthropic")
+    monkeypatch.setenv("MODEL_NAME", "claude-3-5-sonnet")
+
+    agent = TicketAgent(*repositories)
+    assert agent._resolve_model() is not None
+    assert captured == {
+        "model": "claude-3-5-sonnet",
+        "model_provider": "anthropic",
+    }
+
+
 def test_invalid_tool_arguments_are_returned_to_model(repositories):
     """Tool 参数校验失败时，模型应收到结构化错误而不是直接中断。"""
     mysql, _ = repositories

@@ -1,15 +1,16 @@
 """工单 AI 主体：提示词、Tool 调用循环和会话事件流。"""
 
 import json
+import os
 import uuid
 from collections.abc import Iterator
 from typing import Any
 
+from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .schemas import AgentRequest, AgentSessionState
 from .tools import build_ticket_tools
-from ..model import init_model
 
 
 MAX_TOOL_CALLS = 15
@@ -38,7 +39,11 @@ class TicketAgent:
         """优先使用测试或上层注入的模型，否则按环境变量初始化 ChatModel。"""
         if self.model is not None:
             return self.model
-        return init_model()
+        model_name = os.getenv("MODEL_NAME", "").strip()
+        if not model_name:
+            raise RuntimeError("MODEL_NOT_CONFIGURED: 请在 .env 中配置 MODEL_NAME")
+        provider = os.getenv("MODEL_PROVIDER", "").strip() or None
+        return init_chat_model(model=model_name, model_provider=provider)
 
     def _history(self, conversation_id: str) -> list[dict[str, str]]:
         """读取已完成会话中的用户和助手文本；旧仓储替身没有该能力时返回空历史。"""
