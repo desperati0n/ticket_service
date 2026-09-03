@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from pathlib import Path
 
 from app.main import app
-from app.cli import format_event, main as cli_main, prompt_request
+from app.cli import create_ticket_interactively, format_event, main as cli_main, prompt_request
 
 
 client = TestClient(app)
@@ -113,6 +113,15 @@ def test_cli_menu_keeps_running_after_an_operation_choice():
     assert cli_main(lambda _: next(answers), output.append) == 0
     assert any("请输入 1、2、3、4、5 或 0" in line for line in output)
     assert output[-1] == "已退出。"
+
+
+def test_cli_stops_at_first_invalid_input(repositories):
+    """工号校验失败时不应继续询问资产和问题。"""
+    answers = iter(["404"])
+    output = []
+    create_ticket_interactively(lambda _: next(answers), output.append)
+    assert any("EMPLOYEE_NOT_FOUND" in line for line in output)
+    assert any("本次报修已取消" in line for line in output)
 
 
 def test_cli_formats_failed_event_without_dumping_mapping():

@@ -58,12 +58,33 @@ def main(input_fn: Callable[[str], str] | None = None, output_fn: Callable[[str]
 
 
 def create_ticket_interactively(input_fn: Callable[[str], str] | None = None, output_fn: Callable[[str], None] | None = None) -> None:
-    """询问工单信息并打印每个流程事件或异常。"""
+    """逐步校验报修输入，任一步失败都结束本次创建。"""
     input_fn = input_fn or input
     output_fn = output_fn or print
-    output_fn("\n开始创建工单，请依次回答：")
+    output_fn("\n开始创建报修，请按步骤输入：")
     try:
-        request = prompt_request(input_fn)
+        employee_no = input_fn("工号：").strip()
+        employee = flow.mysql.get_employee_by_no(employee_no)
+        if not employee:
+            output_fn(f"[FAILED] 员工不存在：{employee_no}（EMPLOYEE_NOT_FOUND）")
+            output_fn("本次报修已取消，请回到菜单重新开始。")
+            return
+
+        output_fn(f"[SUCCESS] 员工已确认：{employee.name}（{employee.department}）")
+        asset_description = input_fn("哪个资产有问题（例如：Dell 显示器）：").strip()
+        asset = flow.mysql.verify_asset_belongs_to_employee(asset_description, employee.id)
+        if not asset:
+            output_fn(f"[FAILED] 资产未登记或不属于员工 {employee_no}：{asset_description}（ASSET_NOT_FOUND_OR_NOT_ASSIGNED）")
+            output_fn("本次报修已取消，请回到菜单重新开始。")
+            return
+
+        output_fn(f"[SUCCESS] 资产已确认：{asset.name}（{asset.asset_code}）")
+        problem_description = input_fn("具体问题是什么：").strip()
+        request = TicketRequest(
+            employee_no=employee_no,
+            asset_description=asset_description,
+            problem_description=problem_description,
+        )
         output_fn("\n--- 处理过程 ---")
         for event in flow.run(request):
             output_fn(format_event(event))
