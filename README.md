@@ -9,7 +9,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-配置统一放在根目录 `.env`，示例见 `.env.example`。当前 `STORAGE_BACKEND=memory`，无需先启动数据库即可演示 API；MySQL/MongoDB 连接参数已经预留在环境变量中，后续替换 repository 即可接入真实服务。
+配置统一放在根目录 `.env`，示例见 `.env.example`。默认 `STORAGE_BACKEND=memory`，无需先启动数据库即可演示 API；将其改为 `mysql_mongo` 后，会使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务。
 
 如需启动数据库服务：
 
