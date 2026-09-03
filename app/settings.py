@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "IT运维助手 Demo"
     app_env: str = "development"
-    storage_backend: str = "memory"
+    storage_backend: str = "mysql_mongo"
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3306
     mysql_database: str = "ticket_service"
@@ -26,4 +26,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
