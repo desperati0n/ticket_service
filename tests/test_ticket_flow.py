@@ -25,24 +25,13 @@ def test_health():
     assert response.json()["status"] == "ok"
 
 
-def test_settings_load_project_env_from_any_working_directory():
-    """配置应在任意工作目录下读取指定的环境变量文件。"""
-    from app.settings import Settings
+def test_repository_converts_mysql_port_from_env():
+    """真实仓储应在使用配置时将 MySQL 端口转换成整数。"""
+    from app.ids import Snowflake
+    from app.real_repositories import MySQLRepository
 
-    settings = Settings(_env_file="G:/实习/ticket_service/.env.example")
-    assert settings.mysql_host == "127.0.0.1"
-    assert settings.mongo_database == "ticket_service"
-
-
-def test_database_gui_settings_are_loaded_from_env_example():
-    """数据库可视化工具端口和认证配置应与 Compose 默认值一致。"""
-    from app.settings import Settings
-
-    settings = Settings(_env_file="G:/实习/ticket_service/.env.example")
-    assert settings.adminer_port == 8080
-    assert settings.mongo_express_port == 8081
-    assert settings.mongo_express_auth_enabled is True
-    assert settings.mongo_express_username == "admin"
+    repository = MySQLRepository(Snowflake())
+    assert repository.engine.url.port == 3306
 
 
 def test_structured_request_stream_creates_ticket(repositories):
@@ -80,6 +69,22 @@ def test_unknown_employee_returns_error_event(repositories):
     assert response.status_code == 200
     assert "EMPLOYEE_NOT_FOUND" in response.text
     assert "event: done" not in response.text
+
+
+def test_unassigned_or_unknown_asset_does_not_create_ticket(repositories):
+    """资产未登记或不属于员工时，不应创建工单。"""
+    mysql_repository, _ = repositories
+    response = client.post(
+        "/ticket/stream",
+        json={
+            "employee_no": "10086",
+            "asset_description": "冰箱",
+            "problem_description": "爆炸了",
+        },
+    )
+    assert response.status_code == 200
+    assert "ASSET_NOT_FOUND_OR_NOT_ASSIGNED" in response.text
+    assert mysql_repository.tickets == []
 
 
 def test_text_input_is_reserved_for_ai(repositories):

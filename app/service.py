@@ -45,8 +45,16 @@ class TicketFlow:
             return
         yield emit("employee_lookup", "success", {"employee_no": employee.employee_no, "name": employee.name})
 
-        asset = self.mysql.find_asset(request.asset_description or "", employee.id)
-        yield emit("asset_lookup", "success", {"asset_id": asset.id if asset else None, "matched": bool(asset)})
+        asset = self.mysql.verify_asset_belongs_to_employee(request.asset_description or "", employee.id)
+        if not asset:
+            error = "asset is not registered for this employee"
+            yield emit("asset_lookup", "failed", {
+                "code": "ASSET_NOT_FOUND_OR_NOT_ASSIGNED",
+                "message": error,
+            })
+            self.mongo.finish_log(log, status="failed", error=error)
+            return
+        yield emit("asset_lookup", "success", {"asset_id": asset.id, "matched": True})
 
         ticket = self.mysql.create_ticket(
             employee=employee,

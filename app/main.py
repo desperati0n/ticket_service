@@ -1,23 +1,25 @@
 """本模块负责组装 FastAPI、仓储和工单业务流程。"""
 
 import json
+import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from dotenv import load_dotenv
 
 from .ids import Snowflake
 from .real_repositories import MongoRepository, MySQLRepository
 from .schemas import TicketRequest
 from .service import TicketFlow
-from .settings import get_settings
 
-settings = get_settings()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 id_generator = Snowflake()
-mysql_repository = MySQLRepository(settings, id_generator)
-mongo_repository = MongoRepository(settings)
+mysql_repository = MySQLRepository(id_generator)
+mongo_repository = MongoRepository()
 flow = TicketFlow(mysql_repository, mongo_repository)
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=os.getenv("APP_NAME", "IT运维助手 Demo"))
 
 
 def sse_stream(request: TicketRequest):
@@ -29,7 +31,7 @@ def sse_stream(request: TicketRequest):
 @app.get("/health")
 def health() -> dict:
     """返回服务健康状态和运行环境。"""
-    return {"status": "ok", "environment": settings.app_env}
+    return {"status": "ok", "environment": os.getenv("APP_ENV", "development")}
 
 
 @app.post("/ticket/stream")

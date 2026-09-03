@@ -1,21 +1,30 @@
 """本模块实现真实 MySQL 业务仓储和 MongoDB 日志仓储。"""
 
 from datetime import datetime, timezone
+import os
+from pathlib import Path
 from urllib.parse import quote_plus
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from .models import Asset, Employee
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 class MySQLRepository:
     """MySQL 仓储负责员工、资产和工单的持久化。"""
 
-    def __init__(self, settings, id_generator):
+    def __init__(self, id_generator):
         """根据环境配置创建 UTF-8 MySQL 连接池。"""
         self._id = id_generator
-        password = quote_plus(settings.mysql_password)
-        url = f"mysql+pymysql://{quote_plus(settings.mysql_user)}:{password}@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}"
+        user = os.getenv("MYSQL_USER", "ticket_service")
+        password = quote_plus(os.getenv("MYSQL_PASSWORD", ""))
+        host = os.getenv("MYSQL_HOST", "127.0.0.1")
+        port = int(os.getenv("MYSQL_PORT", "3306"))
+        database = os.getenv("MYSQL_DATABASE", "ticket_service")
+        url = f"mysql+pymysql://{quote_plus(user)}:{password}@{host}:{port}/{database}"
         self.engine = create_engine(url, pool_pre_ping=True, connect_args={"charset": "utf8mb4"})
 
     def get_employee_by_no(self, employee_no: str) -> Employee | None:
@@ -27,23 +36,26 @@ class MySQLRepository:
             ).mappings().first()
         return Employee(**row) if row else None
 
-    def find_asset(self, description: str, employee_id: int) -> Asset | None:
-        """在员工可用资产中按描述查询一项资产。"""
+    def verify_asset_belongs_to_employee(self, description: str, employee_id: int) -> Asset | None:
+        """确认描述的公司资产已登记，且属于指定员工。"""
         with self.engine.connect() as conn:
             row = conn.execute(
                 text("""
-                    SELECT id, asset_code, name, assigned_employee_id, status
-                    FROM assets
-                    WHERE (assigned_employee_id IS NULL OR assigned_employee_id = :employee_id)
-                      AND (LOWER(name) LIKE :pattern OR LOWER(asset_code) LIKE :pattern)
+                    SELECT a.id, a.asset_code, a.name, a.status
+                    FROM assets a
+                    JOIN employee_assets ea ON ea.asset_id = a.id
+                    WHERE ea.employee_id = :employee_id
+                      AND (LOWER(a.name) LIKE :pattern OR LOWER(a.asset_code) LIKE :pattern)
                     LIMIT 1
                 """),
                 {"employee_id": employee_id, "pattern": f"%{description.lower()}%"},
             ).mappings().first()
         return Asset(**row) if row else None
 
-    def create_ticket(self, *, employee: Employee, asset: Asset | None, issue: str) -> dict:
+    def create_ticket(self, *, employee: Employee, asset: Asset, issue: str) -> dict:
         """向 MySQL 写入一张待处理工单并返回保存值。"""
+        if asset is None:
+            raise ValueError("asset must be verified before creating a ticket")
         ticket_id = self._id.next_id()
         created_at = datetime.now(timezone.utc)
         with self.engine.begin() as conn:
@@ -52,10 +64,10 @@ class MySQLRepository:
                     INSERT INTO tickets (id, employee_id, asset_id, issue, status, created_at)
                     VALUES (:id, :employee_id, :asset_id, :issue, 'PENDING', :created_at)
                 """),
-                {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id if asset else None,
+                {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id,
                  "issue": issue, "created_at": created_at},
             )
-        return {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id if asset else None,
+        return {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id,
                 "issue": issue, "status": "PENDING", "created_at": created_at.isoformat()}
 
     def get_ticket(self, ticket_id: int) -> dict | None:
@@ -119,12 +131,15 @@ class MySQLRepository:
 class MongoRepository:
     """MongoDB 仓储负责保存请求内容和流程事件。"""
 
-    def __init__(self, settings):
+    def __init__(self):
         """根据环境配置创建延迟连接的 MongoDB 客户端。"""
         from pymongo import MongoClient
 
-        self.client = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=2000)
-        self.collection = self.client[settings.mongo_database][settings.mongo_collection]
+        uri = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
+        database = os.getenv("MONGO_DATABASE", "ticket_service")
+        collection = os.getenv("MONGO_COLLECTION", "conversation_logs")
+        self.client = MongoClient(uri, serverSelectionTimeoutMS=2000)
+        self.collection = self.client[database][collection]
 
     def start_log(self, request_id: str, payload: dict) -> dict:
         """将原始请求写入一条新的 MongoDB 文档。"""

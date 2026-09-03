@@ -17,7 +17,7 @@ uvicorn app.main:app --reload
 docker compose up -d mysql mongo adminer mongo-express
 ```
 
-MySQL 首次创建数据卷时会执行 `mysql/init.sql`，建立三张业务表并写入演示员工/资产数据；MongoDB 只需启动服务，`conversation_logs` 集合会在首次写入时自动创建。
+MySQL 首次创建数据卷时会执行 `mysql/init.sql`，建立员工、资产、员工资产关联、工单四张业务表，并写入至少 10 条员工和资产数据；MongoDB 只需启动服务，`conversation_logs` 集合会在首次写入时自动创建。
 
 ## 数据库可视化操作
 

@@ -15,15 +15,17 @@ class FakeMySQL:
     def __init__(self):
         self._id = Snowflake()
         self.employees = {"10086": Employee(10086, "10086", "张三", "研发部")}
-        self.assets = [Asset(1, "A-001", "Dell 显示器", 10086)]
+        self.assets = [Asset(1, "A-001", "Dell 显示器")]
+        self.employee_assets = {10086: {1}}
         self.tickets = []
 
     def get_employee_by_no(self, employee_no):
         return self.employees.get(str(employee_no))
 
-    def find_asset(self, description, employee_id):
+    def verify_asset_belongs_to_employee(self, description, employee_id):
         description = description.lower()
-        return next((asset for asset in self.assets if asset.assigned_employee_id == employee_id and description in asset.name.lower()), None)
+        asset_ids = self.employee_assets.get(employee_id, set())
+        return next((asset for asset in self.assets if asset.id in asset_ids and description in asset.name.lower()), None)
 
     def create_ticket(self, *, employee, asset, issue):
         ticket = {"id": self._id.next_id(), "employee_id": employee.id, "asset_id": asset.id if asset else None,

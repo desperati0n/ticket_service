@@ -21,5 +21,4 @@ class Asset:
     id: int
     asset_code: str
     name: str
-    assigned_employee_id: int | None = None
     status: str = "in_use"
