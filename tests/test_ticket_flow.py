@@ -3,7 +3,9 @@
 from fastapi.testclient import TestClient
 
 from app.main import app, mysql_repository, mongo_repository
-from app.cli import prompt_request
+from app.cli import format_event, main as cli_main, prompt_request
+from app.ids import Snowflake
+from app.repositories import MemoryMySQLRepository
 
 
 client = TestClient(app)
@@ -75,3 +77,38 @@ def test_text_input_is_reserved_for_ai():
     response = client.post("/ticket/stream", json={"input_type": "text", "message": "显示器坏了"})
     assert response.status_code == 200
     assert "AI_NOT_ENABLED" in response.text
+
+
+def test_cli_menu_keeps_running_after_an_operation_choice():
+    """菜单操作结束后应回到菜单，而不是直接结束进程。"""
+    answers = iter(["9", "0"])
+    output = []
+    assert cli_main(lambda _: next(answers), output.append) == 0
+    assert any("请输入 1、2、3、4、5 或 0" in line for line in output)
+    assert output[-1] == "已退出。"
+
+
+def test_cli_formats_failed_event_without_dumping_mapping():
+    """流程失败时应输出摘要，而不是把整个 data 字典打印出来。"""
+    message = format_event({
+        "seq": 2,
+        "step": "employee_lookup",
+        "status": "failed",
+        "data": {"code": "EMPLOYEE_NOT_FOUND", "message": "employee not found"},
+    })
+    assert "EMPLOYEE_NOT_FOUND" in message
+    assert "employee not found" in message
+    assert "{'code'" not in message
+
+
+def test_memory_repository_supports_update_and_delete():
+    """内存仓储应支持工单修改和删除。"""
+    repository = MemoryMySQLRepository(Snowflake())
+    employee = repository.get_employee_by_no("10086")
+    ticket = repository.create_ticket(employee=employee, asset=None, issue="旧问题")
+    updated = repository.update_ticket(ticket["id"], issue="新问题", status="RESOLVED")
+    assert updated["issue"] == "新问题"
+    assert updated["status"] == "RESOLVED"
+    assert repository.delete_ticket(ticket["id"]) is True
+    assert repository.get_ticket(ticket["id"]) is None
+    assert repository.delete_ticket(ticket["id"]) is False

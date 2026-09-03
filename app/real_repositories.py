@@ -94,6 +94,29 @@ class MySQLRepository:
             rows = conn.execute(text(query), params).mappings().all()
         return [dict(row) for row in rows]
 
+    def update_ticket(self, ticket_id: int, *, issue: str | None = None, status: str | None = None) -> dict | None:
+        """更新工单内容或状态，并返回更新后的工单。"""
+        changes = {}
+        if issue is not None:
+            changes["issue"] = issue
+        if status is not None:
+            changes["status"] = status
+        if not changes:
+            return self.get_ticket(ticket_id)
+        assignments = ", ".join(f"{field} = :{field}" for field in changes)
+        changes["ticket_id"] = ticket_id
+        with self.engine.begin() as conn:
+            result = conn.execute(text(f"UPDATE tickets SET {assignments} WHERE id = :ticket_id"), changes)
+            if result.rowcount == 0:
+                return None
+        return self.get_ticket(ticket_id)
+
+    def delete_ticket(self, ticket_id: int) -> bool:
+        """删除一张工单，返回是否实际删除。"""
+        with self.engine.begin() as conn:
+            result = conn.execute(text("DELETE FROM tickets WHERE id = :ticket_id"), {"ticket_id": ticket_id})
+        return result.rowcount > 0
+
 
 class MongoRepository:
     """MongoDB 仓储负责保存请求内容和流程事件。"""

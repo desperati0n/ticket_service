@@ -74,6 +74,25 @@ class MemoryMySQLRepository:
             return []
         return list(reversed([ticket for ticket in self.tickets if ticket["employee_id"] == employee.id]))
 
+    def update_ticket(self, ticket_id: int, *, issue: str | None = None, status: str | None = None) -> dict | None:
+        """更新工单的可编辑字段，并返回更新后的工单。"""
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return None
+        if issue is not None:
+            ticket["issue"] = issue
+        if status is not None:
+            ticket["status"] = status
+        return ticket
+
+    def delete_ticket(self, ticket_id: int) -> bool:
+        """删除一张内存工单，返回是否实际删除。"""
+        for index, ticket in enumerate(self.tickets):
+            if ticket["id"] == ticket_id:
+                del self.tickets[index]
+                return True
+        return False
+
 
 class MemoryMongoRepository:
     """内存日志仓储为测试模拟 MongoDB 请求记录。"""
