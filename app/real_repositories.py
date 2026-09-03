@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
@@ -181,3 +182,64 @@ class MongoRepository:
         if error:
             update["error"] = error
         self.collection.update_one({"request_id": log["request_id"]}, {"$set": update})
+
+    def start_agent_log(self, conversation_id: str, request_id: str, message: str) -> dict:
+        """创建一条自然语言 Agent 执行日志。"""
+        log = {
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+            "input": {"message": message},
+            "events": [],
+            "status": "started",
+            "created_at": datetime.now(timezone.utc),
+        }
+        self.collection.insert_one(log)
+        return log
+
+    def append_agent_event(self, log: dict, event: dict) -> None:
+        """向 Agent 日志追加模型、Tool 或 SSE 事件。"""
+        self.collection.update_one(
+            {"request_id": log["request_id"]},
+            {"$push": {"events": event}},
+        )
+
+    def finish_agent_log(
+        self,
+        log: dict,
+        *,
+        status: str,
+        assistant_message: str | None = None,
+        ticket_id: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        """写入 Agent 最终状态，并保存可用于下一轮对话的助手回复。"""
+        update: dict[str, Any] = {
+            "status": status,
+            "ticket_id": ticket_id,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if assistant_message is not None:
+            update["assistant_message"] = assistant_message
+        if error:
+            update["error"] = error
+        self.collection.update_one({"request_id": log["request_id"]}, {"$set": update})
+
+    def get_agent_history(self, conversation_id: str, limit: int = 20) -> list[dict[str, str]]:
+        """读取同一会话最近完成的用户消息和助手回复。"""
+        rows = (
+            self.collection.find(
+                {"conversation_id": conversation_id, "status": "success"},
+                {"_id": 0, "input.message": 1, "assistant_message": 1, "created_at": 1},
+            )
+            .sort("created_at", 1)
+            .limit(limit)
+        )
+        history: list[dict[str, str]] = []
+        for row in rows:
+            message = row.get("input", {}).get("message")
+            if message:
+                history.append({"role": "user", "content": message})
+            assistant_message = row.get("assistant_message")
+            if assistant_message:
+                history.append({"role": "assistant", "content": assistant_message})
+        return history

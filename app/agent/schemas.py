@@ -32,6 +32,14 @@ class CreateTicketInput(BaseModel):
     )
 
 
+class AgentRequest(BaseModel):
+    """自然语言 Agent 接口的请求。"""
+
+    message: str = Field(min_length=1, description="用户当前发送的自然语言消息")
+    conversation_id: str | None = Field(default=None, min_length=1)
+    request_id: str | None = Field(default=None, min_length=1)
+
+
 class ToolResult(BaseModel):
     """所有工单 Tool 共用的稳定返回格式。"""
 

@@ -46,7 +46,26 @@ curl -N -X POST http://127.0.0.1:8000/ticket/stream `
   -d '{"employee_no":"10086","asset_description":"Dell 显示器","problem_description":"无法点亮"}'
 ```
 
-文本入口暂时只返回 `AI_NOT_ENABLED`，接入 LangChain 后再实现解析。
+自然语言入口使用 LangChain Agent，接口为 `POST /chat/stream`。Agent 会按照“提取信息 → 验证员工 → 验证员工资产 → 创建待处理工单”的顺序调用工具，最多执行 15 次工具调用；每次模型、工具和最终回复都会通过 SSE 推送，并记录到 MongoDB 的 `conversation_logs` 集合。
+
+模型配置示例（统一写入根目录 `.env`）：
+
+```dotenv
+MODEL_NAME=你的模型名称
+OPENAI_API_KEY=你的 API Key
+# 使用兼容 OpenAI 协议的服务时可填写
+OPENAI_BASE_URL=
+```
+
+自然语言请求示例：
+
+```powershell
+curl -N -X POST http://127.0.0.1:8000/chat/stream `
+  -H "Content-Type: application/json" `
+  -d '{"message":"我的 Dell 显示器坏了，工号 10086，急用"}'
+```
+
+原有 `/ticket/stream` 仍用于结构化请求，传入 `input_type=text` 时仍保留未启用 AI 的兼容行为。
 
 ## 终端交互演示
 
