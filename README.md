@@ -55,12 +55,14 @@ curl -N -X POST http://127.0.0.1:8000/ticket/stream `
 ```dotenv
 MODEL_PROVIDER=openai       # 例如 openai、anthropic、google_genai、ollama
 MODEL_NAME=你的模型名称
+MODEL_API_KEY=你的模型 API Key
+MODEL_BASE_URL=模型服务 URL
 OPENAI_API_KEY=你的 API Key
 # 使用兼容 OpenAI 协议的服务时可填写
 OPENAI_BASE_URL=
 ```
 
-Agent 使用 LangChain 的 `init_chat_model` 统一初始化模型。切换提供商只需修改 `MODEL_PROVIDER`、`MODEL_NAME` 和对应认证变量；非 OpenAI 提供商还需要安装对应的 LangChain 集成包。
+Agent 使用 LangChain 的 `init_chat_model` 统一初始化模型，模型提供商、名称、API Key 和 URL 均从 `.env` 读取。非 OpenAI 提供商还需要安装对应的 LangChain 集成包。
 
 自然语言请求示例：
 

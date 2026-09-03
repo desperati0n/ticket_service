@@ -153,26 +153,19 @@ def test_agent_returns_configuration_error_without_model_settings(repositories, 
     assert mongo.logs[0]["status"] == "failed"
 
 
-def test_agent_initializes_model_from_provider_and_name(repositories, monkeypatch):
-    """未注入测试模型时应直接使用环境变量调用 init_chat_model。"""
-    import app.agent.agent as agent_module
+def test_agent_initializes_real_chat_model_from_env(repositories, monkeypatch):
+    """未注入测试模型时应通过真实 init_chat_model 创建配置好的 ChatModel。"""
+    monkeypatch.setenv("MODEL_PROVIDER", "openai")
+    monkeypatch.setenv("MODEL_NAME", "gpt-4o-mini")
+    monkeypatch.setenv("MODEL_API_KEY", "test-key")
+    monkeypatch.setenv("MODEL_BASE_URL", "https://model.example/v1")
 
-    captured = {}
+    model = TicketAgent(*repositories)._resolve_model()
 
-    def fake_init_chat_model(**kwargs):
-        captured.update(kwargs)
-        return object()
-
-    monkeypatch.setattr(agent_module, "init_chat_model", fake_init_chat_model)
-    monkeypatch.setenv("MODEL_PROVIDER", "anthropic")
-    monkeypatch.setenv("MODEL_NAME", "claude-3-5-sonnet")
-
-    agent = TicketAgent(*repositories)
-    assert agent._resolve_model() is not None
-    assert captured == {
-        "model": "claude-3-5-sonnet",
-        "model_provider": "anthropic",
-    }
+    assert type(model).__name__ == "ChatOpenAI"
+    assert model.model_name == "gpt-4o-mini"
+    assert model.openai_api_key.get_secret_value() == "test-key"
+    assert model.openai_api_base == "https://model.example/v1"
 
 
 def test_invalid_tool_arguments_are_returned_to_model(repositories):

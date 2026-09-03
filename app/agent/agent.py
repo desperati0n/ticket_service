@@ -43,7 +43,20 @@ class TicketAgent:
         if not model_name:
             raise RuntimeError("MODEL_NOT_CONFIGURED: 请在 .env 中配置 MODEL_NAME")
         provider = os.getenv("MODEL_PROVIDER", "").strip() or None
-        return init_chat_model(model=model_name, model_provider=provider)
+        api_key = os.getenv("MODEL_API_KEY", "").strip()
+        base_url = os.getenv("MODEL_BASE_URL", "").strip()
+        # 兼容现有 OpenAI 配置；其它提供商统一使用 MODEL_API_KEY/MODEL_BASE_URL。
+        if not api_key and (provider or "").lower() == "openai":
+            api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not base_url and (provider or "").lower() == "openai":
+            base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+
+        kwargs: dict[str, Any] = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        return init_chat_model(model=model_name, model_provider=provider, **kwargs)
 
     def _history(self, conversation_id: str) -> list[dict[str, str]]:
         """读取已完成会话中的用户和助手文本；旧仓储替身没有该能力时返回空历史。"""
