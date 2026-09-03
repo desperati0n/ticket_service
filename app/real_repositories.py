@@ -57,7 +57,7 @@ class MySQLRepository:
 
     def verify_asset_belongs_to_employee(self, description: str, employee_id: int) -> Asset | None:
         """确认描述的公司资产已登记，且属于指定员工。"""
-        description = description.strip().lower()
+        description = _repair_mojibake(description).strip().lower()
         with self.engine.connect() as conn:
             rows = conn.execute(
                 text("""
