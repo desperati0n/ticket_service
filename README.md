@@ -28,7 +28,7 @@ Compose 会下载并启动两个常用的 Web 管理工具：
 | Adminer | <http://127.0.0.1:8080> | MySQL 表、SQL 和数据 |
 | Mongo Express | <http://127.0.0.1:8081> | MongoDB 数据库和集合 |
 
-Adminer 登录时填写：系统 `MySQL`，服务器 `mysql`（从宿主机访问也可填 `127.0.0.1:3306`），用户名 `ticket_service`，密码取 `.env` 的 `MYSQL_PASSWORD`，数据库 `ticket_service`。
+Adminer 登录时填写：系统 `MySQL`，服务器 `mysql`（这是 Docker 网络中的服务名），用户名 `ticket_service`，密码取 `.env` 的 `MYSQL_PASSWORD`，数据库 `ticket_service`。如果你另外安装宿主机上的桌面客户端，再使用 `127.0.0.1:3306`。
 
 Mongo Express 使用 `.env` 中的 `MONGO_EXPRESS_USERNAME` / `MONGO_EXPRESS_PASSWORD` 登录，进入后选择 `ticket_service` 数据库和 `conversation_logs` 集合。工具容器通过 Docker 网络中的 `mysql`、`mongo` 服务名连接，和程序使用的宿主机端口连接的是同一份数据。
 
