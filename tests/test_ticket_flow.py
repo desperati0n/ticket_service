@@ -22,6 +22,14 @@ def test_health():
     assert response.json()["status"] == "ok"
 
 
+def test_settings_load_project_env_from_any_working_directory():
+    from app.settings import Settings
+
+    settings = Settings(_env_file="G:/实习/ticket_service/.env.example")
+    assert settings.mysql_host == "127.0.0.1"
+    assert settings.mongo_database == "ticket_service"
+
+
 def test_structured_request_stream_creates_ticket():
     before = len(mysql_repository.tickets)
     response = client.post(

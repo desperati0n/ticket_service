@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,7 +21,12 @@ class Settings(BaseSettings):
     model_temperature: float = 0.0
     model_max_tokens: int = 1024
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Always resolve .env from the project root, even when an IDE runs app/cli.py directly.
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parents[1] / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache
