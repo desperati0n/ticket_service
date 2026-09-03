@@ -106,9 +106,7 @@ class MySQLRepository:
         assignments = ", ".join(f"{field} = :{field}" for field in changes)
         changes["ticket_id"] = ticket_id
         with self.engine.begin() as conn:
-            result = conn.execute(text(f"UPDATE tickets SET {assignments} WHERE id = :ticket_id"), changes)
-            if result.rowcount == 0:
-                return None
+            conn.execute(text(f"UPDATE tickets SET {assignments} WHERE id = :ticket_id"), changes)
         return self.get_ticket(ticket_id)
 
     def delete_ticket(self, ticket_id: int) -> bool:
