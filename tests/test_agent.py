@@ -141,31 +141,32 @@ def test_agent_returns_configuration_error_without_model_settings(repositories, 
     """未配置模型时应通过 SSE 事件返回可理解的错误，而不是抛出异常。"""
     mysql, _ = repositories
     mongo = FakeAgentMongo()
-    monkeypatch.delenv("MODEL_NAME", raising=False)
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     events = list(TicketAgent(mysql, mongo).run(AgentRequest(message="显示器坏了")))
 
     assert events[-2]["step"] == "error"
     assert events[-2]["data"]["code"] == "AGENT_EXECUTION_FAILED"
-    assert "MODEL_NOT_CONFIGURED" in events[-2]["data"]["message"]
+    assert "DEEPSEEK_MODEL" in events[-2]["data"]["message"]
     assert events[-1]["step"] == "done"
     assert mongo.logs[0]["status"] == "failed"
 
 
 def test_agent_initializes_real_chat_model_from_env(repositories, monkeypatch):
-    """未注入测试模型时应通过真实 init_chat_model 创建配置好的 ChatModel。"""
-    monkeypatch.setenv("MODEL_PROVIDER", "openai")
-    monkeypatch.setenv("MODEL_NAME", "gpt-4o-mini")
-    monkeypatch.setenv("MODEL_API_KEY", "test-key")
-    monkeypatch.setenv("MODEL_BASE_URL", "https://model.example/v1")
+    """未注入测试模型时应通过真实 init_chat_model 创建 DeepSeek ChatModel。"""
+    monkeypatch.setenv("MODEL_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-chat")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://model.example/v1")
 
     model = TicketAgent(*repositories)._resolve_model()
 
-    assert type(model).__name__ == "ChatOpenAI"
-    assert model.model_name == "gpt-4o-mini"
-    assert model.openai_api_key.get_secret_value() == "test-key"
-    assert model.openai_api_base == "https://model.example/v1"
+    assert type(model).__name__ == "ChatDeepSeek"
+    assert model.model_name == "deepseek-chat"
+    assert model.api_key.get_secret_value() == "test-key"
+    assert model.api_base == "https://model.example/v1"
+    assert model.temperature == 0
 
 
 def test_invalid_tool_arguments_are_returned_to_model(repositories):
