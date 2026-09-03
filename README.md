@@ -29,6 +29,16 @@ curl -N -X POST http://127.0.0.1:8000/ticket/stream `
 
 文本入口暂时只返回 `AI_NOT_ENABLED`，接入 LangChain 后再实现解析。
 
+## 终端交互演示
+
+不想手写 JSON 时，可以直接运行：
+
+```powershell
+python -m app.cli
+```
+
+程序会依次询问工号、资产、故障描述和是否紧急，并把 SSE 对应的处理步骤打印到终端。
+
 ## 测试
 
 ```powershell

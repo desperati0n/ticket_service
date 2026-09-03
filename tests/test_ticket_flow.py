@@ -1,9 +1,19 @@
 from fastapi.testclient import TestClient
 
 from app.main import app, mysql_repository, mongo_repository
+from app.cli import prompt_request
 
 
 client = TestClient(app)
+
+
+def test_prompt_request_collects_answers():
+    answers = iter(["10086", "Dell 显示器", "无法点亮", "y"])
+    request = prompt_request(lambda _: next(answers))
+    assert request.employee_no == "10086"
+    assert request.asset_description == "Dell 显示器"
+    assert request.problem_description == "无法点亮"
+    assert request.priority == "urgent"
 
 
 def test_health():
@@ -49,4 +59,3 @@ def test_text_input_is_reserved_for_ai():
     response = client.post("/ticket/stream", json={"input_type": "text", "message": "显示器坏了"})
     assert response.status_code == 200
     assert "AI_NOT_ENABLED" in response.text
-
