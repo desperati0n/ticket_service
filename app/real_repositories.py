@@ -57,19 +57,24 @@ class MySQLRepository:
 
     def verify_asset_belongs_to_employee(self, description: str, employee_id: int) -> Asset | None:
         """确认描述的公司资产已登记，且属于指定员工。"""
+        description = description.strip().lower()
         with self.engine.connect() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 text("""
                     SELECT a.id, a.asset_code, a.name, a.status
                     FROM assets a
                     JOIN employee_assets ea ON ea.asset_id = a.id
                     WHERE ea.employee_id = :employee_id
-                      AND (LOWER(a.name) LIKE :pattern OR LOWER(a.asset_code) LIKE :pattern)
-                    LIMIT 1
                 """),
-                {"employee_id": employee_id, "pattern": f"%{description.lower()}%"},
-            ).mappings().first()
-        return Asset(**_repair_row(row)) if row else None
+                {"employee_id": employee_id},
+            ).mappings().all()
+        for row in rows:
+            asset = Asset(**_repair_row(row))
+            name = asset.name.strip().lower()
+            code = asset.asset_code.strip().lower()
+            if description in name or name in description or description in code or code in description:
+                return asset
+        return None
 
     def create_ticket(self, *, employee: Employee, asset: Asset, issue: str) -> dict:
         """向 MySQL 写入一张待处理工单并返回保存值。"""

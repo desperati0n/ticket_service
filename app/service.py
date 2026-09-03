@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from .schemas import TicketRequest
+from .operations import check_asset_belongs_to_employee, check_employee
 
 
 class TicketFlow:
@@ -37,23 +38,26 @@ class TicketFlow:
             self.mongo.finish_log(log, status="failed", error=error)
             return
 
-        employee = self.mysql.get_employee_by_no(request.employee_no or "")
-        if not employee:
-            error = "employee not found"
-            yield emit("employee_lookup", "failed", {"code": "EMPLOYEE_NOT_FOUND", "message": error})
-            self.mongo.finish_log(log, status="failed", error=error)
+        employee_check = check_employee(self.mysql, request.employee_no or "")
+        if not employee_check.ok:
+            yield emit("employee_lookup", "failed", {
+                "code": employee_check.code,
+                "message": employee_check.message,
+            })
+            self.mongo.finish_log(log, status="failed", error=employee_check.message)
             return
+        employee = employee_check.value
         yield emit("employee_lookup", "success", {"employee_no": employee.employee_no, "name": employee.name})
 
-        asset = self.mysql.verify_asset_belongs_to_employee(request.asset_description or "", employee.id)
-        if not asset:
-            error = "asset is not registered for this employee"
+        asset_check = check_asset_belongs_to_employee(self.mysql, employee.id, request.asset_description or "")
+        if not asset_check.ok:
             yield emit("asset_lookup", "failed", {
-                "code": "ASSET_NOT_FOUND_OR_NOT_ASSIGNED",
-                "message": error,
+                "code": asset_check.code,
+                "message": asset_check.message,
             })
-            self.mongo.finish_log(log, status="failed", error=error)
+            self.mongo.finish_log(log, status="failed", error=asset_check.message)
             return
+        asset = asset_check.value
         yield emit("asset_lookup", "success", {"asset_id": asset.id, "matched": True})
 
         ticket = self.mysql.create_ticket(

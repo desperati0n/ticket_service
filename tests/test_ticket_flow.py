@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.main import app
 from app.cli import create_ticket_interactively, format_event, main as cli_main, prompt_request
+from app.operations import check_asset_belongs_to_employee, check_employee, check_problem_description
 
 
 client = TestClient(app)
@@ -139,6 +140,16 @@ def test_cli_rejects_blank_input_without_validation_dump(repositories):
     create_ticket_interactively(lambda _: "", output.append)
     assert any("工号不能为空" in line for line in output)
     assert not any("ValidationError" in line for line in output)
+
+
+def test_business_checks_are_reusable_for_future_tools(repositories):
+    """业务校验函数应独立于 CLI，可直接供其他适配器调用。"""
+    mysql_repository, _ = repositories
+    employee = check_employee(mysql_repository, "10086")
+    assert employee.ok
+    asset = check_asset_belongs_to_employee(mysql_repository, employee.value.id, "Dell 显示器")
+    assert asset.ok
+    assert check_problem_description("  ").code == "PROBLEM_REQUIRED"
 
 
 def test_cli_formats_failed_event_without_dumping_mapping():

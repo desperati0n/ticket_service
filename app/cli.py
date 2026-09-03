@@ -9,9 +9,11 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from app.main import flow
     from app.schemas import TicketRequest
+    from app.operations import check_asset_belongs_to_employee, check_employee, check_problem_description
 else:
     from .main import flow
     from .schemas import TicketRequest
+    from .operations import check_asset_belongs_to_employee, check_employee, check_problem_description
 
 
 def prompt_request(input_fn: Callable[[str], str] = input) -> TicketRequest:
@@ -67,28 +69,32 @@ def create_ticket_interactively(input_fn: Callable[[str], str] | None = None, ou
         if not employee_no:
             output_fn("[FAILED] 工号不能为空，本次报修已取消，请回到菜单重新开始。")
             return
-        employee = flow.mysql.get_employee_by_no(employee_no)
-        if not employee:
-            output_fn(f"[FAILED] 员工不存在：{employee_no}（EMPLOYEE_NOT_FOUND）")
+        employee_check = check_employee(flow.mysql, employee_no)
+        if not employee_check.ok:
+            output_fn(f"[FAILED] {employee_check.message}：{employee_no}（{employee_check.code}）")
             output_fn("本次报修已取消，请回到菜单重新开始。")
             return
+        employee = employee_check.value
 
         output_fn(f"[SUCCESS] 员工已确认：{employee.name}（{employee.department}）")
         asset_description = input_fn("哪个资产有问题（例如：Dell 显示器）：").strip()
         if not asset_description:
             output_fn("[FAILED] 资产描述不能为空，本次报修已取消，请回到菜单重新开始。")
             return
-        asset = flow.mysql.verify_asset_belongs_to_employee(asset_description, employee.id)
-        if not asset:
-            output_fn(f"[FAILED] 资产未登记或不属于员工 {employee_no}：{asset_description}（ASSET_NOT_FOUND_OR_NOT_ASSIGNED）")
+        asset_check = check_asset_belongs_to_employee(flow.mysql, employee.id, asset_description)
+        if not asset_check.ok:
+            output_fn(f"[FAILED] {asset_check.message}：{asset_description}（{asset_check.code}）")
             output_fn("本次报修已取消，请回到菜单重新开始。")
             return
+        asset = asset_check.value
 
         output_fn(f"[SUCCESS] 资产已确认：{asset.name}（{asset.asset_code}）")
-        problem_description = input_fn("具体问题是什么：").strip()
-        if not problem_description:
-            output_fn("[FAILED] 问题描述不能为空，本次报修已取消，请回到菜单重新开始。")
+        problem_check = check_problem_description(input_fn("具体问题是什么："))
+        if not problem_check.ok:
+            output_fn(f"[FAILED] {problem_check.message}（{problem_check.code}）")
+            output_fn("本次报修已取消，请回到菜单重新开始。")
             return
+        problem_description = problem_check.value
         request = TicketRequest(
             employee_no=employee_no,
             asset_description=asset_description,
