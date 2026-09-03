@@ -64,6 +64,9 @@ def create_ticket_interactively(input_fn: Callable[[str], str] | None = None, ou
     output_fn("\n开始创建报修，请按步骤输入：")
     try:
         employee_no = input_fn("工号：").strip()
+        if not employee_no:
+            output_fn("[FAILED] 工号不能为空，本次报修已取消，请回到菜单重新开始。")
+            return
         employee = flow.mysql.get_employee_by_no(employee_no)
         if not employee:
             output_fn(f"[FAILED] 员工不存在：{employee_no}（EMPLOYEE_NOT_FOUND）")
@@ -72,6 +75,9 @@ def create_ticket_interactively(input_fn: Callable[[str], str] | None = None, ou
 
         output_fn(f"[SUCCESS] 员工已确认：{employee.name}（{employee.department}）")
         asset_description = input_fn("哪个资产有问题（例如：Dell 显示器）：").strip()
+        if not asset_description:
+            output_fn("[FAILED] 资产描述不能为空，本次报修已取消，请回到菜单重新开始。")
+            return
         asset = flow.mysql.verify_asset_belongs_to_employee(asset_description, employee.id)
         if not asset:
             output_fn(f"[FAILED] 资产未登记或不属于员工 {employee_no}：{asset_description}（ASSET_NOT_FOUND_OR_NOT_ASSIGNED）")
@@ -80,6 +86,9 @@ def create_ticket_interactively(input_fn: Callable[[str], str] | None = None, ou
 
         output_fn(f"[SUCCESS] 资产已确认：{asset.name}（{asset.asset_code}）")
         problem_description = input_fn("具体问题是什么：").strip()
+        if not problem_description:
+            output_fn("[FAILED] 问题描述不能为空，本次报修已取消，请回到菜单重新开始。")
+            return
         request = TicketRequest(
             employee_no=employee_no,
             asset_description=asset_description,

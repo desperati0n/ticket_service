@@ -124,6 +124,14 @@ def test_cli_stops_at_first_invalid_input(repositories):
     assert any("本次报修已取消" in line for line in output)
 
 
+def test_cli_rejects_blank_input_without_validation_dump(repositories):
+    """空工号应显示明确提示，而不是抛出 Pydantic 错误。"""
+    output = []
+    create_ticket_interactively(lambda _: "", output.append)
+    assert any("工号不能为空" in line for line in output)
+    assert not any("ValidationError" in line for line in output)
+
+
 def test_cli_formats_failed_event_without_dumping_mapping():
     """流程失败时应输出摘要，而不是把整个 data 字典打印出来。"""
     message = format_event({

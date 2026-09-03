@@ -24,7 +24,7 @@ class MySQLRepository:
         host = os.getenv("MYSQL_HOST", "127.0.0.1")
         port = int(os.getenv("MYSQL_PORT", "3306"))
         database = os.getenv("MYSQL_DATABASE", "ticket_service")
-        url = f"mysql+pymysql://{quote_plus(user)}:{password}@{host}:{port}/{database}"
+        url = f"mysql+pymysql://{quote_plus(user)}:{password}@{host}:{port}/{database}?charset=utf8mb4"
         self.engine = create_engine(url, pool_pre_ping=True, connect_args={"charset": "utf8mb4"})
 
     def get_employee_by_no(self, employee_no: str) -> Employee | None:
