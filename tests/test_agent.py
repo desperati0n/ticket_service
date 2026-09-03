@@ -2,7 +2,7 @@
 
 from langchain_core.messages import AIMessage
 
-from app.agent import AgentRequest, TicketAgent
+from app.agent import AgentRequest, SYSTEM_PROMPT, TicketAgent
 from app.main import app
 from fastapi.testclient import TestClient
 
@@ -72,6 +72,20 @@ def successful_model():
             AIMessage(content="报修已提交，工单状态为待处理。"),
         ]
     )
+
+
+def test_system_prompt_clearly_describes_agent_job_and_flow():
+    """系统提示词应简短但覆盖任务、CRUD 流程和基本约束。"""
+    assert len(SYSTEM_PROMPT) < 600
+    assert "理解用户意图" in SYSTEM_PROMPT
+    assert "verify_employee" in SYSTEM_PROMPT
+    assert "verify_employee_asset" in SYSTEM_PROMPT
+    assert "create_ticket" in SYSTEM_PROMPT
+    assert "get_ticket" in SYSTEM_PROMPT
+    assert "list_tickets" in SYSTEM_PROMPT
+    assert "update_ticket" in SYSTEM_PROMPT
+    assert "delete_ticket" in SYSTEM_PROMPT
+    assert "不猜测" in SYSTEM_PROMPT
 
 
 def test_agent_runs_business_flow_and_persists_events(repositories):
