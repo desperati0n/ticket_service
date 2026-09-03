@@ -17,11 +17,14 @@ def _repair_mojibake(value):
     """兼容旧数据库中把 UTF-8 按 cp1252 保存后的中文文本。"""
     if not isinstance(value, str):
         return value
-    try:
-        repaired = value.encode("cp1252").decode("utf-8")
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        return value
-    return repaired if repaired != value else value
+    for codec in ("cp1252", "latin1"):
+        try:
+            repaired = value.encode(codec).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if repaired != value:
+            return repaired
+    return value
 
 
 def _repair_row(row):

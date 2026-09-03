@@ -40,6 +40,7 @@ def test_repository_repairs_legacy_mojibake():
     from app.real_repositories import _repair_mojibake
 
     assert _repair_mojibake("å¼ ä¼Ÿ") == "张伟"
+    assert _repair_mojibake("æå¨") == "李娜"
     assert _repair_mojibake("张伟") == "张伟"
 
 
