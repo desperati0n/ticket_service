@@ -13,6 +13,22 @@ from .models import Asset, Employee
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
+def _repair_mojibake(value):
+    """兼容旧数据库中把 UTF-8 按 cp1252 保存后的中文文本。"""
+    if not isinstance(value, str):
+        return value
+    try:
+        repaired = value.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+    return repaired if repaired != value else value
+
+
+def _repair_row(row):
+    """修复查询结果中的历史乱码字段，不影响正常中文。"""
+    return {key: _repair_mojibake(value) for key, value in row.items()}
+
+
 class MySQLRepository:
     """MySQL 仓储负责员工、资产和工单的持久化。"""
 
@@ -34,7 +50,7 @@ class MySQLRepository:
                 text("SELECT id, employee_no, name, department, status FROM employees WHERE employee_no = :no"),
                 {"no": employee_no},
             ).mappings().first()
-        return Employee(**row) if row else None
+        return Employee(**_repair_row(row)) if row else None
 
     def verify_asset_belongs_to_employee(self, description: str, employee_id: int) -> Asset | None:
         """确认描述的公司资产已登记，且属于指定员工。"""
@@ -50,7 +66,7 @@ class MySQLRepository:
                 """),
                 {"employee_id": employee_id, "pattern": f"%{description.lower()}%"},
             ).mappings().first()
-        return Asset(**row) if row else None
+        return Asset(**_repair_row(row)) if row else None
 
     def create_ticket(self, *, employee: Employee, asset: Asset, issue: str) -> dict:
         """向 MySQL 写入一张待处理工单并返回保存值。"""
@@ -85,7 +101,7 @@ class MySQLRepository:
                 """),
                 {"ticket_id": ticket_id},
             ).mappings().first()
-        return dict(row) if row else None
+        return _repair_row(row) if row else None
 
     def list_tickets(self, employee_no: str | None = None) -> list[dict]:
         """查询工单列表并可按员工工号筛选。"""
@@ -104,7 +120,7 @@ class MySQLRepository:
         query += " ORDER BY t.created_at DESC"
         with self.engine.connect() as conn:
             rows = conn.execute(text(query), params).mappings().all()
-        return [dict(row) for row in rows]
+        return [_repair_row(row) for row in rows]
 
     def update_ticket(self, ticket_id: int, *, issue: str | None = None, status: str | None = None) -> dict | None:
         """更新工单内容或状态，并返回更新后的工单。"""

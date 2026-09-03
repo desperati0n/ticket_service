@@ -35,6 +35,14 @@ def test_repository_converts_mysql_port_from_env():
     assert repository.engine.url.port == 3306
 
 
+def test_repository_repairs_legacy_mojibake():
+    """历史数据库中的常见 UTF-8/latin1 乱码应在读取时恢复。"""
+    from app.real_repositories import _repair_mojibake
+
+    assert _repair_mojibake("å¼ ä¼Ÿ") == "张伟"
+    assert _repair_mojibake("张伟") == "张伟"
+
+
 def test_mysql_seed_contains_many_to_many_data():
     """初始化脚本应提供至少 10 名员工、10 项资产和多对多关联表。"""
     sql = Path("mysql/init.sql").read_text(encoding="utf-8")
