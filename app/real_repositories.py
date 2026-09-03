@@ -11,7 +11,7 @@ class MySQLRepository:
         self._id = id_generator
         password = quote_plus(settings.mysql_password)
         url = f"mysql+pymysql://{quote_plus(settings.mysql_user)}:{password}@{settings.mysql_host}:{settings.mysql_port}/{settings.mysql_database}"
-        self.engine = create_engine(url, pool_pre_ping=True)
+        self.engine = create_engine(url, pool_pre_ping=True, connect_args={"charset": "utf8mb4"})
 
     def get_employee_by_no(self, employee_no: str) -> Employee | None:
         with self.engine.connect() as conn:
@@ -65,6 +65,24 @@ class MySQLRepository:
                 {"ticket_id": ticket_id},
             ).mappings().first()
         return dict(row) if row else None
+
+    def list_tickets(self, employee_no: str | None = None) -> list[dict]:
+        query = """
+            SELECT t.id, t.employee_id, e.employee_no, e.name AS employee_name,
+                   t.asset_id, a.asset_code, a.name AS asset_name,
+                   t.issue, t.priority, t.status, t.created_at
+            FROM tickets t
+            JOIN employees e ON e.id = t.employee_id
+            LEFT JOIN assets a ON a.id = t.asset_id
+        """
+        params = {}
+        if employee_no:
+            query += " WHERE e.employee_no = :employee_no"
+            params["employee_no"] = employee_no
+        query += " ORDER BY t.created_at DESC"
+        with self.engine.connect() as conn:
+            rows = conn.execute(text(query), params).mappings().all()
+        return [dict(row) for row in rows]
 
 
 class MongoRepository:

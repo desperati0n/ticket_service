@@ -57,6 +57,14 @@ class MemoryMySQLRepository:
     def get_ticket(self, ticket_id: int) -> dict | None:
         return next((ticket for ticket in self.tickets if ticket["id"] == ticket_id), None)
 
+    def list_tickets(self, employee_no: str | None = None) -> list[dict]:
+        if employee_no is None:
+            return list(reversed(self.tickets))
+        employee = self.get_employee_by_no(employee_no)
+        if not employee:
+            return []
+        return list(reversed([ticket for ticket in self.tickets if ticket["employee_id"] == employee.id]))
+
 
 class MemoryMongoRepository:
     def __init__(self):

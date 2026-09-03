@@ -32,7 +32,7 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print("IT 运维助手 Demo（终端版，无 AI）")
-    print("输入 1 创建报修工单，输入 2 查询工单，输入 0 退出。\n")
+    print("输入 1 创建报修工单，输入 2 查询工单，输入 3 查询所有工单，输入 0 退出。\n")
     while True:
         try:
             choice = input("请选择：").strip()
@@ -43,7 +43,9 @@ def main() -> int:
                 return create_ticket_interactively()
             if choice == "2":
                 return query_ticket_interactively()
-            print("请输入 1、2 或 0。")
+            if choice == "3":
+                return list_tickets_interactively()
+            print("请输入 1、2、3 或 0。")
         except (KeyboardInterrupt, EOFError):
             print("\n已取消。")
             return 130
@@ -72,7 +74,12 @@ def query_ticket_interactively() -> int:
         ticket_id = int(input("请输入工单 ID：").strip())
         ticket = flow.mysql.get_ticket(ticket_id)
         if not ticket:
-            print(f"[FAILED] 找不到工单：{ticket_id}")
+            tickets = flow.mysql.list_tickets(str(ticket_id))
+            if tickets:
+                print(f"[INFO] 未找到工单 ID，已按员工工号 {ticket_id} 列出历史工单：")
+                print_tickets(tickets)
+                return 0
+            print(f"[FAILED] 找不到工单或员工：{ticket_id}")
             return 1
         print("[SUCCESS] 工单详情：")
         for key, value in ticket.items():
@@ -85,6 +92,32 @@ def query_ticket_interactively() -> int:
         print(f"\n[EXCEPTION] {type(exc).__name__}: {exc}")
         traceback.print_exc()
         return 1
+
+
+def list_tickets_interactively() -> int:
+    try:
+        employee_no = input("员工工号（直接回车查询全部）：").strip() or None
+        tickets = flow.mysql.list_tickets(employee_no)
+        if not tickets:
+            print("[INFO] 没有找到工单。")
+            return 0
+        print_tickets(tickets)
+        return 0
+    except Exception as exc:
+        print(f"\n[EXCEPTION] {type(exc).__name__}: {exc}")
+        traceback.print_exc()
+        return 1
+
+
+def print_tickets(tickets: list[dict]) -> None:
+    print(f"[SUCCESS] 共 {len(tickets)} 条工单：")
+    for ticket in tickets:
+        print(
+            f"  ID={ticket.get('id')} | 员工={ticket.get('employee_no', ticket.get('employee_id'))} "
+            f"| 资产={ticket.get('asset_name', ticket.get('asset_id'))} "
+            f"| 优先级={ticket.get('priority')} | 状态={ticket.get('status')} "
+            f"| 问题={ticket.get('issue')}"
+        )
 
 
 if __name__ == "__main__":
