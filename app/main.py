@@ -2,6 +2,7 @@
 
 import json
 import os
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -56,3 +57,9 @@ def chat_stream(request: AgentRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/chat/reset")
+def reset_chat_context() -> dict[str, str | bool]:
+    """创建一个新的会话 ID，供客户端开始不带历史上下文的对话。"""
+    return {"conversation_id": str(uuid.uuid4()), "reset": True}

@@ -1,6 +1,7 @@
 """工单 Agent 主体、调用上限、日志和 FastAPI SSE 测试。"""
 
 from langchain_core.messages import AIMessage
+from uuid import UUID
 
 from app.agent import AgentRequest, SYSTEM_PROMPT, TicketAgent
 from app.main import app
@@ -217,3 +218,16 @@ def test_chat_stream_exposes_agent_events(repositories, monkeypatch):
     assert "event: tool_started" in response.text
     assert "event: answer" in response.text
     assert "event: done" in response.text
+
+
+def test_chat_reset_returns_new_conversation_id():
+    """重置接口应返回可用于下一轮对话的新会话 ID。"""
+    response = TestClient(app).post("/chat/reset")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reset"] is True
+    UUID(body["conversation_id"])
+
+    second = TestClient(app).post("/chat/reset").json()
+    assert second["conversation_id"] != body["conversation_id"]

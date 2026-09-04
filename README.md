@@ -50,6 +50,8 @@ curl -N -X POST http://127.0.0.1:8000/ticket/stream `
 
 自然语言入口使用 LangChain Agent，接口为 `POST /chat/stream`。Agent 支持工单增删改查；创建报修时会按照“提取信息 → 验证员工 → 验证员工资产 → 创建待处理工单”的顺序调用工具，最多执行 15 次工具调用。每次模型、工具和最终回复都会通过 SSE 推送，并记录到 MongoDB 的 `conversation_logs` 集合。
 
+准备提交新的工单时，可以先调用 `POST /chat/reset` 刷新上下文。接口会返回新的 `conversation_id`，后续请求将该 ID 传给 `/chat/stream`，即可开始不带旧历史的对话；继续当前工单时复用同一个 ID。
+
 模型配置示例（统一写入根目录 `.env`）：
 
 ```dotenv

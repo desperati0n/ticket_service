@@ -161,6 +161,30 @@
           }
         }
       }
+    },
+    "/chat/reset": {
+      "post": {
+        "tags": ["agent"],
+        "summary": "刷新自然语言会话上下文",
+        "description": "生成新的 conversation_id。客户端将其用于后续 /chat/stream 请求即可开始不带旧历史的对话。",
+        "operationId": "reset_chat_context",
+        "responses": {
+          "200": {
+            "description": "新的会话 ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetConversationResponse"
+                },
+                "example": {
+                  "conversation_id": "conversation-new-001",
+                  "reset": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -176,6 +200,21 @@
           "environment": {
             "type": "string",
             "example": "development"
+          }
+        }
+      },
+      "ResetConversationResponse": {
+        "type": "object",
+        "required": ["conversation_id", "reset"],
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "后续 /chat/stream 请求使用的新会话 ID。"
+          },
+          "reset": {
+            "type": "boolean",
+            "const": true
           }
         }
       },
