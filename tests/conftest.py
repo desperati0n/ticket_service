@@ -88,5 +88,8 @@ def repositories(monkeypatch):
     monkeypatch.setattr(app_main, "mysql_repository", mysql)
     monkeypatch.setattr(app_main, "mongo_repository", mongo)
     monkeypatch.setattr(app_main, "flow", TicketFlow(mysql, mongo))
+    import app.cli as app_cli
+
+    monkeypatch.setattr(app_cli, "flow", app_main.flow)
     return mysql, mongo
 

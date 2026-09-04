@@ -23,11 +23,18 @@ ticket_agent = TicketAgent(mysql_repository, mongo_repository)
 
 app = FastAPI(title=os.getenv("APP_NAME", "IT运维助手 Demo"))
 
-
+#无AI业务逻辑
 def sse_stream(request: TicketRequest):
     """将业务流程事件序列化为 SSE 数据帧。"""
     for event in flow.run(request):
         yield f"event: {event['step']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+#有AI业务逻辑
+def agent_sse_stream(request: AgentRequest):
+    """将自然语言 Agent 事件序列化为 SSE 数据帧。"""
+    for event in ticket_agent.run(request):
+        yield f"event: {event['step']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+
 
 
 @app.get("/health")
@@ -40,13 +47,6 @@ def health() -> dict:
 def create_ticket_stream(request: TicketRequest):
     """创建工单并流式返回每个业务步骤。"""
     return StreamingResponse(sse_stream(request), media_type="text/event-stream")
-
-
-def agent_sse_stream(request: AgentRequest):
-    """将自然语言 Agent 事件序列化为 SSE 数据帧。"""
-    for event in ticket_agent.run(request):
-        yield f"event: {event['step']}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-
 
 @app.post("/chat/stream")
 def chat_stream(request: AgentRequest):

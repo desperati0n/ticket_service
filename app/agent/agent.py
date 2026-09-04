@@ -47,7 +47,6 @@ class TicketAgent:
             model_provider=os.getenv("MODEL_PROVIDER", "deepseek"),
             api_key=os.getenv("DEEPSEEK_API_KEY"),
             base_url=os.getenv("DEEPSEEK_BASE_URL"),
-            temperature=0,
         )
 
     def _history(self, conversation_id: str) -> list[dict[str, str]]:
@@ -138,6 +137,7 @@ class TicketAgent:
         tool_calls_used = 0
 
         def emit(step: str, status: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+            """构造并持久化一个事件；调用方的 ``yield`` 再把它交给 SSE。"""
             nonlocal sequence
             sequence += 1
             event = {
@@ -151,6 +151,7 @@ class TicketAgent:
             self._append_log(log, event)
             return event
 
+        # 事件 1：请求已接收。yield 暂停 run，让外层立即推送首个 SSE。
         yield emit("received", "success", {"conversation_id": conversation_id})
 
         try:
@@ -166,6 +167,7 @@ class TicketAgent:
             tools = build_ticket_tools(self.mysql, state)
             tool_map = {item.name: item for item in tools}
             model = self._resolve_model().bind_tools(tools)
+            # 事件 2：模型和工具已准备好，告知客户端本次调用上限。
             yield emit("model_started", "success", {"tool_limit": MAX_TOOL_CALLS})
 
             while True:
@@ -177,7 +179,9 @@ class TicketAgent:
                     answer = self._content(getattr(response, "content", "")) or "本次请求未生成可用回复。"
                     ticket_id = state.created_ticket_id
                     self._finish_log(log, status="success", assistant_message=answer, ticket_id=ticket_id)
+                    # 事件 3a：模型不再请求工具，发送最终自然语言答复。
                     yield emit("answer", "success", {"message": answer})
+                    # 事件 3b：正常流程结束；下游可据此关闭 SSE 消费。
                     yield emit("done", "success", {"success": True, "ticket_id": ticket_id})
                     return
 
@@ -185,11 +189,13 @@ class TicketAgent:
                     if tool_calls_used >= MAX_TOOL_CALLS:
                         message = "本次处理已达到工具调用上限，系统已停止继续执行，请重新描述需求。"
                         self._finish_log(log, status="failed", error=message, ticket_id=state.created_ticket_id)
+                        # 事件 4a：达到安全上限，停止继续执行工具。
                         yield emit(
                             "tool_limit_reached",
                             "failed",
                             {"message": message, "max_tool_calls": MAX_TOOL_CALLS},
                         )
+                        # 事件 4b：失败终止信号；客户端收到后结束 SSE。
                         yield emit("done", "failed", {"success": False, "code": "TOOL_CALL_LIMIT_REACHED"})
                         return
 
@@ -197,6 +203,7 @@ class TicketAgent:
                     tool_name = call.get("name", "")
                     tool_args = call.get("args") or {}
                     call_id = call.get("id") or f"tool-call-{tool_calls_used}"
+                    # 事件 5：工具即将执行，发送工具名、参数和累计调用次数。
                     yield emit(
                         "tool_started",
                         "success",
@@ -232,6 +239,7 @@ class TicketAgent:
                             tool_call_id=call_id,
                         )
                     )
+                    # 事件 6：工具已执行，发送统一结果；随后回到模型循环。
                     yield emit(
                         "tool_finished",
                         "success" if result.get("ok") else "failed",
@@ -246,5 +254,7 @@ class TicketAgent:
         except Exception as exc:
             message = f"Agent 执行失败：{exc}"
             self._finish_log(log, status="failed", error=message, ticket_id=state.created_ticket_id)
+            # 事件 7a：捕获未处理异常，将服务端错误转成可展示的事件。
             yield emit("error", "failed", {"code": "AGENT_EXECUTION_FAILED", "message": message})
+            # 事件 7b：异常终止信号；客户端收到后结束 SSE。
             yield emit("done", "failed", {"success": False, "code": "AGENT_EXECUTION_FAILED"})

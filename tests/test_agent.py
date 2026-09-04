@@ -107,6 +107,18 @@ def test_agent_runs_business_flow_and_persists_events(repositories):
 
     tool_names = [event["data"]["name"] for event in events if event["step"] == "tool_started"]
     assert tool_names == ["verify_employee", "verify_employee_asset", "create_ticket"]
+    assert [event["step"] for event in events] == [
+        "received",
+        "model_started",
+        "tool_started",
+        "tool_finished",
+        "tool_started",
+        "tool_finished",
+        "tool_started",
+        "tool_finished",
+        "answer",
+        "done",
+    ]
     assert events[-1]["step"] == "done"
     assert events[-1]["data"] == {"success": True, "ticket_id": mysql.tickets[0]["id"]}
     assert mongo.logs[0]["status"] == "success"
@@ -166,7 +178,7 @@ def test_agent_initializes_real_chat_model_from_env(repositories, monkeypatch):
     assert model.model_name == "deepseek-chat"
     assert model.api_key.get_secret_value() == "test-key"
     assert model.api_base == "https://model.example/v1"
-    assert model.temperature == 0
+    assert model.temperature is None
 
 
 def test_invalid_tool_arguments_are_returned_to_model(repositories):
