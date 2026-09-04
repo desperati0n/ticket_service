@@ -6,14 +6,16 @@ import uuid
 from collections.abc import Iterator
 from typing import Any
 
+from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from .schemas import AgentRequest, AgentSessionState
 from .tools import build_ticket_tools
 
+load_dotenv()
 
-MAX_TOOL_CALLS = 15
+MAX_TOOL_CALLS = int(os.getenv("MAX_TOOL_CALLS", "15"))
 
 SYSTEM_PROMPT = """你是 IT 运维工单助手。你的任务是理解用户意图，使用工具完成工单增删改查，并用简洁中文反馈结果。
 
