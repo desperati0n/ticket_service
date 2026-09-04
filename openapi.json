@@ -28,7 +28,9 @@
   "paths": {
     "/health": {
       "get": {
-        "tags": ["system"],
+        "tags": [
+          "system"
+        ],
         "summary": "健康检查",
         "operationId": "health",
         "responses": {
@@ -51,7 +53,9 @@
     },
     "/ticket/stream": {
       "post": {
-        "tags": ["tickets"],
+        "tags": [
+          "tickets"
+        ],
         "summary": "创建结构化维修工单（SSE）",
         "description": "校验员工和员工资产后创建状态为 PENDING 的工单，并按步骤持续推送 SSE 事件。设置 input_type=text 时会返回 AI_NOT_ENABLED 兼容错误事件。",
         "operationId": "create_ticket_stream",
@@ -107,7 +111,9 @@
     },
     "/chat/stream": {
       "post": {
-        "tags": ["agent"],
+        "tags": [
+          "agent"
+        ],
         "summary": "处理自然语言报修（SSE）",
         "description": "调用 LangChain Agent 自动匹配员工、资产和工单工具，实时推送模型及工具调用过程。需要在服务端 .env 配置模型相关变量。",
         "operationId": "chat_stream",
@@ -164,7 +170,9 @@
     },
     "/chat/reset": {
       "post": {
-        "tags": ["agent"],
+        "tags": [
+          "agent"
+        ],
         "summary": "刷新自然语言会话上下文",
         "description": "生成新的 conversation_id。客户端将其用于后续 /chat/stream 请求即可开始不带旧历史的对话。",
         "operationId": "reset_chat_context",
@@ -185,13 +193,85 @@
           }
         }
       }
+    },
+    "/ticket/task": {
+      "post": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "异步提交工单任务",
+        "operationId": "enqueue_ticket_task",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequest"
+              },
+              "example": {
+                "message": "我的 Dell 显示器坏了，工号 10086"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "任务已进入后台队列",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedTaskResponse"
+                },
+                "example": {
+                  "status": "queued",
+                  "task_id": "task_xxx",
+                  "conversation_id": "conversation_xxx"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "任务队列不可用"
+          }
+        }
+      }
+    },
+    "/ticket/task/{task_id}": {
+      "get": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "查询异步任务状态",
+        "operationId": "get_ticket_task",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务状态"
+          },
+          "404": {
+            "description": "任务不存在"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
       "HealthResponse": {
         "type": "object",
-        "required": ["status", "environment"],
+        "required": [
+          "status",
+          "environment"
+        ],
         "properties": {
           "status": {
             "type": "string",
@@ -205,7 +285,10 @@
       },
       "ResetConversationResponse": {
         "type": "object",
-        "required": ["conversation_id", "reset"],
+        "required": [
+          "conversation_id",
+          "reset"
+        ],
         "properties": {
           "conversation_id": {
             "type": "string",
@@ -224,32 +307,50 @@
         "properties": {
           "input_type": {
             "type": "string",
-            "enum": ["structured", "text"],
+            "enum": [
+              "structured",
+              "text"
+            ],
             "default": "structured",
             "description": "输入模式。"
           },
           "employee_no": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "员工工号（结构化模式必填）。"
           },
           "asset_description": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "故障资产名称、品牌、型号或资产编号（结构化模式必填）。"
           },
           "problem_description": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "完整故障现象（结构化模式必填）。"
           },
           "message": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "自然语言报修消息（text 模式必填）。"
           },
           "request_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "可选幂等/追踪请求 ID；不传时由服务端生成。"
           }
@@ -257,7 +358,9 @@
       },
       "AgentRequest": {
         "type": "object",
-        "required": ["message"],
+        "required": [
+          "message"
+        ],
         "properties": {
           "message": {
             "type": "string",
@@ -265,12 +368,18 @@
             "description": "用户当前发送的自然语言消息。"
           },
           "conversation_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "可选会话 ID；用于关联历史上下文。"
           },
           "request_id": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "minLength": 1,
             "description": "可选请求 ID；不传时由服务端生成。"
           }
@@ -278,7 +387,13 @@
       },
       "SSEEvent": {
         "type": "object",
-        "required": ["seq", "step", "status", "data", "request_id"],
+        "required": [
+          "seq",
+          "step",
+          "status",
+          "data",
+          "request_id"
+        ],
         "properties": {
           "seq": {
             "type": "integer",
@@ -290,7 +405,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["started", "success", "failed"]
+            "enum": [
+              "started",
+              "success",
+              "failed"
+            ]
           },
           "data": {
             "type": "object",
@@ -316,7 +435,9 @@
           },
           {
             "type": "object",
-            "required": ["conversation_id"],
+            "required": [
+              "conversation_id"
+            ],
             "properties": {
               "conversation_id": {
                 "type": "string"
@@ -328,7 +449,9 @@
       },
       "ValidationError": {
         "type": "object",
-        "required": ["detail"],
+        "required": [
+          "detail"
+        ],
         "properties": {
           "detail": {
             "type": "array",
@@ -340,18 +463,47 @@
       },
       "ValidationErrorItem": {
         "type": "object",
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "properties": {
           "loc": {
             "type": "array",
             "items": {
-              "type": ["string", "integer"]
+              "type": [
+                "string",
+                "integer"
+              ]
             }
           },
           "msg": {
             "type": "string"
           },
           "type": {
+            "type": "string"
+          }
+        }
+      },
+      "QueuedTaskResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "task_id",
+          "conversation_id"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued"
+            ]
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "conversation_id": {
             "type": "string"
           }
         }
@@ -368,7 +520,10 @@
             "example": {
               "detail": [
                 {
-                  "loc": ["body", "message"],
+                  "loc": [
+                    "body",
+                    "message"
+                  ],
                   "msg": "String should have at least 1 character",
                   "type": "string_too_short"
                 }

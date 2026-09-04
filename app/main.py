@@ -5,13 +5,14 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 
 from .agent import AgentRequest, TicketAgent
 from .ids import Snowflake
 from .real_repositories import MongoRepository, MySQLRepository
+from .queue import TaskQueue
 from .schemas import TicketRequest
 from .service import TicketFlow
 
@@ -21,6 +22,7 @@ mysql_repository = MySQLRepository(id_generator)
 mongo_repository = MongoRepository()
 flow = TicketFlow(mysql_repository, mongo_repository)
 ticket_agent = TicketAgent(mysql_repository, mongo_repository)
+task_queue = TaskQueue()
 
 app = FastAPI(title=os.getenv("APP_NAME", "IT运维助手 Demo"))
 
@@ -57,6 +59,39 @@ def chat_stream(request: AgentRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/ticket/task", status_code=status.HTTP_202_ACCEPTED)
+def enqueue_ticket_task(request: AgentRequest) -> dict[str, str]:
+    """接收自然语言报修并立即投递到后台 Worker。"""
+    task_id = request.request_id or str(uuid.uuid4())
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+    payload = {
+        "message": request.message,
+        "conversation_id": conversation_id,
+        "request_id": task_id,
+    }
+    creator = getattr(mongo_repository, "create_task", None)
+    if creator is not None:
+        creator(task_id, payload)
+    try:
+        task_queue.enqueue(task_id, payload)
+    except Exception as exc:
+        updater = getattr(mongo_repository, "update_task", None)
+        if updater is not None:
+            updater(task_id, status="failed", error=f"任务入队失败：{exc}")
+        raise HTTPException(status_code=503, detail="任务队列暂时不可用") from exc
+    return {"status": "queued", "task_id": task_id, "conversation_id": conversation_id}
+
+
+@app.get("/ticket/task/{task_id}")
+def get_ticket_task(task_id: str) -> dict:
+    """查询后台任务状态和 Worker 写回的结果。"""
+    getter = getattr(mongo_repository, "get_task", None)
+    task = getter(task_id) if getter is not None else None
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return task
 
 
 @app.post("/chat/reset")

@@ -9,6 +9,30 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+### 后台队列模式
+
+需要让请求立即返回、由后台 Worker 处理时，可以使用 Docker Compose 启动完整服务：
+
+```powershell
+docker compose up -d --build api worker mysql mongo redis
+```
+
+提交异步自然语言工单后，接口会立即返回任务 ID；LLM 调用、员工/资产校验和 MySQL 建单由 `worker.py` 在后台完成：
+
+```powershell
+curl -X POST http://127.0.0.1:8000/ticket/task `
+  -H "Content-Type: application/json" `
+  -d '{"message":"我的 Dell 显示器坏了，工号 10086，急用"}'
+```
+
+返回示例：
+
+```json
+{"status":"queued","task_id":"xxx","conversation_id":"yyy"}
+```
+
+使用 `GET /ticket/task/{task_id}` 查询 `queued`、`processing`、`success` 或 `failed` 状态。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
+
 配置统一放在根目录 `.env`，示例见 `.env.example`。程序始终使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务；测试中的仓储替身仅位于 `tests/`，不会进入生产代码。
 
 如需启动数据库服务和可视化管理工具：

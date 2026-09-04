@@ -196,6 +196,30 @@ class MongoRepository:
         self.collection.insert_one(log)
         return log
 
+    def create_task(self, task_id: str, payload: dict) -> dict:
+        """记录一个已接受的异步任务，供状态查询和 Worker 更新。"""
+        task = {
+            "kind": "async_task",
+            "task_id": task_id,
+            "input": payload,
+            "status": "queued",
+            "created_at": datetime.now(timezone.utc),
+        }
+        self.collection.insert_one(task)
+        return task
+
+    def get_task(self, task_id: str) -> dict | None:
+        """读取异步任务状态。"""
+        return self.collection.find_one({"kind": "async_task", "task_id": task_id}, {"_id": 0})
+
+    def update_task(self, task_id: str, **fields: Any) -> None:
+        """更新异步任务状态和处理结果。"""
+        fields["updated_at"] = datetime.now(timezone.utc)
+        self.collection.update_one(
+            {"kind": "async_task", "task_id": task_id},
+            {"$set": fields},
+        )
+
     def append_agent_event(self, log: dict, event: dict) -> None:
         """向 Agent 日志追加模型、Tool 或 SSE 事件。"""
         self.collection.update_one(

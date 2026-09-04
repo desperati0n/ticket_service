@@ -19,11 +19,20 @@ def test_openapi_spec_is_valid_json_and_declares_api_version():
 def test_openapi_spec_covers_all_fastapi_routes():
     """规范必须覆盖当前 FastAPI 应用公开的四个路由。"""
     spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-    assert set(spec["paths"]) == {"/health", "/ticket/stream", "/chat/stream", "/chat/reset"}
+    assert set(spec["paths"]) == {
+        "/health",
+        "/ticket/stream",
+        "/chat/stream",
+        "/chat/reset",
+        "/ticket/task",
+        "/ticket/task/{task_id}",
+    }
     assert set(spec["paths"]["/health"]) == {"get"}
     assert set(spec["paths"]["/ticket/stream"]) == {"post"}
     assert set(spec["paths"]["/chat/stream"]) == {"post"}
     assert set(spec["paths"]["/chat/reset"]) == {"post"}
+    assert set(spec["paths"]["/ticket/task"]) == {"post"}
+    assert set(spec["paths"]["/ticket/task/{task_id}"]) == {"get"}
 
 
 def test_streaming_endpoints_document_sse_media_type_and_examples():
