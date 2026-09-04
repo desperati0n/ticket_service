@@ -15,6 +15,18 @@ from .tools import build_ticket_tools
 
 MAX_TOOL_CALLS = 15
 
+
+def get_max_tool_calls() -> int:
+    """读取本次 Agent 执行允许的最大 Tool 调用次数。"""
+    raw_value = os.getenv("MAX_TOOL_CALLS", str(MAX_TOOL_CALLS)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("MAX_TOOL_CALLS 必须是正整数") from exc
+    if value < 1:
+        raise RuntimeError("MAX_TOOL_CALLS 必须是正整数")
+    return value
+
 SYSTEM_PROMPT = """你是 IT 运维工单助手。你的任务是理解用户意图，使用工具完成工单增删改查，并用简洁中文反馈结果。
 
 工作流程：
@@ -135,6 +147,7 @@ class TicketAgent:
         log = self._start_log(conversation_id, request_id, request.message)
         sequence = 0
         tool_calls_used = 0
+        max_tool_calls = get_max_tool_calls()
 
         def emit(step: str, status: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
             """构造并持久化一个事件；调用方的 ``yield`` 再把它交给 SSE。"""
@@ -168,7 +181,7 @@ class TicketAgent:
             tool_map = {item.name: item for item in tools}
             model = self._resolve_model().bind_tools(tools)
             # 事件 2：模型和工具已准备好，告知客户端本次调用上限。
-            yield emit("model_started", "success", {"tool_limit": MAX_TOOL_CALLS})
+            yield emit("model_started", "success", {"tool_limit": max_tool_calls})
 
             while True:
                 response = model.invoke(messages)
@@ -186,14 +199,14 @@ class TicketAgent:
                     return
 
                 for call in tool_calls:
-                    if tool_calls_used >= MAX_TOOL_CALLS:
+                    if tool_calls_used >= max_tool_calls:
                         message = "本次处理已达到工具调用上限，系统已停止继续执行，请重新描述需求。"
                         self._finish_log(log, status="failed", error=message, ticket_id=state.created_ticket_id)
                         # 事件 4a：达到安全上限，停止继续执行工具。
                         yield emit(
                             "tool_limit_reached",
                             "failed",
-                            {"message": message, "max_tool_calls": MAX_TOOL_CALLS},
+                            {"message": message, "max_tool_calls": max_tool_calls},
                         )
                         # 事件 4b：失败终止信号；客户端收到后结束 SSE。
                         yield emit("done", "failed", {"success": False, "code": "TOOL_CALL_LIMIT_REACHED"})

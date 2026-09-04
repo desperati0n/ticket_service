@@ -3,7 +3,7 @@
 from langchain_core.messages import AIMessage
 from uuid import UUID
 
-from app.agent import AgentRequest, SYSTEM_PROMPT, TicketAgent
+from app.agent import AgentRequest, SYSTEM_PROMPT, TicketAgent, get_max_tool_calls
 from app.main import app
 from fastapi.testclient import TestClient
 
@@ -87,6 +87,12 @@ def test_system_prompt_clearly_describes_agent_job_and_flow():
     assert "update_ticket" in SYSTEM_PROMPT
     assert "delete_ticket" in SYSTEM_PROMPT
     assert "不猜测" in SYSTEM_PROMPT
+
+
+def test_max_tool_calls_can_be_overridden_by_environment(monkeypatch):
+    """Tool 调用上限应支持通过环境变量调整。"""
+    monkeypatch.setenv("MAX_TOOL_CALLS", "3")
+    assert get_max_tool_calls() == 3
 
 
 def test_agent_runs_business_flow_and_persists_events(repositories):
