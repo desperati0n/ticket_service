@@ -63,7 +63,6 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      MAX_TOOL_CALLS: ${MAX_TOOL_CALLS:-15}
     depends_on:
       mysql:
         condition: service_healthy
@@ -92,7 +91,6 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      MAX_TOOL_CALLS: ${MAX_TOOL_CALLS:-15}
     depends_on:
       mysql:
         condition: service_healthy
