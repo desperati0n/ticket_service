@@ -49,8 +49,20 @@ services:
       - "${APP_PORT:-8000}:8000"
     environment:
       MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ticket_service}
+      MYSQL_USER: ${MYSQL_USER:-ticket_service}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
       MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: ${MONGO_DATABASE:-ticket_service}
+      MONGO_COLLECTION: ${MONGO_COLLECTION:-conversation_logs}
       REDIS_URL: redis://redis:6379/0
+      REDIS_STREAM: ${REDIS_STREAM:-ticket_tasks}
+      REDIS_CONSUMER_GROUP: ${REDIS_CONSUMER_GROUP:-ticket_workers}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
     depends_on:
       mysql:
         condition: service_healthy
@@ -64,9 +76,21 @@ services:
     command: python worker.py
     environment:
       MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ticket_service}
+      MYSQL_USER: ${MYSQL_USER:-ticket_service}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
       MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: ${MONGO_DATABASE:-ticket_service}
+      MONGO_COLLECTION: ${MONGO_COLLECTION:-conversation_logs}
       REDIS_URL: redis://redis:6379/0
+      REDIS_STREAM: ${REDIS_STREAM:-ticket_tasks}
+      REDIS_CONSUMER_GROUP: ${REDIS_CONSUMER_GROUP:-ticket_workers}
       SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID:-2}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
     depends_on:
       mysql:
         condition: service_healthy
