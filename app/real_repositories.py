@@ -203,6 +203,7 @@ class MongoRepository:
             "task_id": task_id,
             "input": payload,
             "status": "queued",
+            "events": [],
             "created_at": datetime.now(timezone.utc),
         }
         self.collection.insert_one(task)
@@ -218,6 +219,16 @@ class MongoRepository:
         self.collection.update_one(
             {"kind": "async_task", "task_id": task_id},
             {"$set": fields},
+        )
+
+    def append_task_event(self, task_id: str, event: dict[str, Any]) -> None:
+        """实时追加 Worker 产生的 Chat Agent 事件，供 SSE 转发。"""
+        self.collection.update_one(
+            {"kind": "async_task", "task_id": task_id},
+            {
+                "$push": {"events": event},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
         )
 
     def append_agent_event(self, log: dict, event: dict) -> None:

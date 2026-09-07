@@ -20,12 +20,34 @@ class FakeQueue:
         return 1
 
 
+class CompletingQueue(FakeQueue):
+    """入队时立即写入模拟 Worker 结果，避免 SSE 接口测试等待。"""
+
+    def __init__(self, mongo):
+        super().__init__()
+        self.mongo = mongo
+
+    def enqueue(self, task_id, payload):
+        message_id = super().enqueue(task_id, payload)
+        self.mongo.update_task(
+            task_id,
+            status="success",
+            answer="报修已提交。",
+            events=[
+                {"step": "answer", "status": "success", "data": {"message": "报修已提交。"}},
+                {"step": "done", "status": "success", "data": {"success": True, "ticket_id": 123}},
+            ],
+        )
+        return message_id
+
+
 class FakeTaskMongo:
     def __init__(self):
         self.tasks = {}
+        self.appended_events = []
 
     def create_task(self, task_id, payload):
-        task = {"task_id": task_id, "input": payload, "status": "queued"}
+        task = {"task_id": task_id, "input": payload, "status": "queued", "events": []}
         self.tasks[task_id] = task
         return task
 
@@ -34,6 +56,10 @@ class FakeTaskMongo:
 
     def update_task(self, task_id, **fields):
         self.tasks[task_id].update(fields)
+
+    def append_task_event(self, task_id, event):
+        self.tasks[task_id]["events"].append(event)
+        self.appended_events.append(event)
 
 
 class FakeAgent:
@@ -50,25 +76,22 @@ class FakeAgent:
         yield {"step": "done", "status": "success", "data": {"success": True, "ticket_id": 123}}
 
 
-def test_task_endpoint_returns_immediately_after_enqueue(monkeypatch):
+def test_single_task_endpoint_streams_chat_timeline(monkeypatch):
     import app.main as app_main
 
-    queue = FakeQueue()
     mongo = FakeTaskMongo()
+    queue = CompletingQueue(mongo)
     monkeypatch.setattr(app_main, "task_queue", queue)
     monkeypatch.setattr(app_main, "mongo_repository", mongo)
 
     response = TestClient(app).post("/ticket/task", json={"message": "显示器坏了，工号 10086"})
 
-    assert response.status_code == 202
-    body = response.json()
-    assert body["status"] == "queued"
-    assert body["total"] == 1
-    assert len(body["tasks"]) == 1
-    task = body["tasks"][0]
-    assert task["task_id"].isdigit()
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: queued" in response.text
+    assert "event: answer" in response.text
+    assert "event: done" in response.text
     assert len(queue.enqueued) == 1
-    assert mongo.get_task(task["task_id"])["status"] == "queued"
 
 
 def test_task_endpoint_always_uses_a_fresh_conversation(monkeypatch):
@@ -82,7 +105,7 @@ def test_task_endpoint_always_uses_a_fresh_conversation(monkeypatch):
 
     response = TestClient(app).post(
         "/ticket/task",
-        json={"message": "新的独立报修", "conversation_id": "old-conversation"},
+        json=[{"message": "新的独立报修", "conversation_id": "old-conversation"}],
     )
 
     task = response.json()["tasks"][0]
@@ -164,6 +187,7 @@ def test_worker_processes_task_and_acknowledges_message():
     assert task["ticket_id"] == 123
     assert task["answer"] == "报修已提交，工单状态为待处理。"
     assert [event["step"] for event in task["events"]] == ["answer", "done"]
+    assert [event["step"] for event in mongo.appended_events] == ["answer", "done"]
     assert agent.requests[0].message == "显示器坏了"
     assert queue.acked == ["redis-1"]
 

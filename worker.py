@@ -23,11 +23,17 @@ def process_message(message_id: str, fields: dict[str, str], *, queue: Any, agen
     task_id = fields["task_id"]
     payload = json.loads(fields["payload"])
     updater = getattr(mongo, "update_task", None)
+    event_appender = getattr(mongo, "append_task_event", None)
     if updater is not None:
         updater(task_id, status="processing", events=[])
     events: list[dict[str, Any]] = []
     try:
-        events = list(agent.run(AgentRequest(**payload)))
+        for event in agent.run(AgentRequest(**payload)):
+            events.append(event)
+            if event_appender is not None:
+                event_appender(task_id, event)
+            elif updater is not None:
+                updater(task_id, events=list(events))
         answer_event = next((event for event in reversed(events) if event.get("step") == "answer"), {})
         answer_data = answer_event.get("data") or {}
         answer = answer_data.get("message")

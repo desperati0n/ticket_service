@@ -17,18 +17,25 @@ uvicorn app.main:app --reload
 docker compose up -d --build api worker mysql mongo redis
 ```
 
-提交异步自然语言工单后，接口会立即返回任务 ID；LLM 调用、员工/资产校验和 MySQL 建单由 `worker.py` 在后台完成：
+提交单条异步自然语言工单后，接口会先通过 `queued` 事件返回任务 ID，再持续推送处理时间线；LLM 调用、员工/资产校验和 MySQL 建单由 `worker.py` 在后台完成：
 
 ```powershell
-curl -X POST http://127.0.0.1:8000/ticket/task `
+curl -N -X POST http://127.0.0.1:8000/ticket/task `
   -H "Content-Type: application/json" `
   -d '{"message":"我的 Dell 显示器坏了，工号 10086，急用"}'
 ```
 
-返回示例：
+单条请求会在入队后保持 SSE 连接，将 Worker 产生的 Chat Agent 时间线实时转发回来：
 
-```json
-{"status":"queued","total":1,"tasks":[{"status":"queued","task_id":"xxx","conversation_id":"yyy"}]}
+```text
+event: queued
+data: {"seq":0,"step":"queued","status":"success","data":{"task_id":"123"},"request_id":"123","conversation_id":"yyy"}
+
+event: answer
+data: {"seq":9,"step":"answer","status":"success","data":{"message":"报修已提交，工单状态为待处理。"},"request_id":"123","conversation_id":"yyy"}
+
+event: done
+data: {"seq":10,"step":"done","status":"success","data":{"success":true,"ticket_id":456},"request_id":"123","conversation_id":"yyy"}
 ```
 
 同一接口也接受由一条或多条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 和全新的 `conversation_id` 后写入 Redis；即使请求中传入旧 `conversation_id` 也不会复用，以免不同任务的上下文混淆：
@@ -40,13 +47,13 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 ]
 ```
 
-响应会返回 `total` 和每条任务的查询 ID：
+批量请求仍会立即返回 `total` 和每条任务的查询 ID：
 
 ```json
 {"status":"queued","total":2,"tasks":[{"status":"queued","task_id":"123","conversation_id":"xxx"},{"status":"queued","task_id":"124","conversation_id":"yyy"}]}
 ```
 
-使用 `GET /ticket/task/{task_id}` 查询 `queued`、`processing`、`success` 或 `failed` 状态。Worker 直接复用 `/chat/stream` 所使用的 `TicketAgent` 逻辑；任务结束后，查询结果中的 `answer` 是最终自然语言回复，`events` 包含与 Chat SSE 相同的完整 Agent 事件。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
+若 SSE 连接中断，可使用其中 `queued` 事件返回的 `task_id` 调用 `GET /ticket/task/{task_id}`，查询 `queued`、`processing`、`success` 或 `failed` 状态。Worker 直接复用 `/chat/stream` 所使用的 `TicketAgent` 逻辑；任务结束后，查询结果中的 `answer` 是最终自然语言回复，`events` 包含与 Chat SSE 相同的完整 Agent 事件。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
 
 配置统一放在根目录 `.env`，示例见 `.env.example`。程序始终使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务；测试中的仓储替身仅位于 `tests/`，不会进入生产代码。
 

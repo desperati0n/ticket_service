@@ -77,6 +77,7 @@ def test_async_task_openapi_matches_fastapi_runtime():
         "application/json"
     ]["schema"]
     assert queued_schema == {"$ref": "#/components/schemas/QueuedTasksResponse"}
+    assert "text/event-stream" in spec["paths"]["/ticket/task"]["post"]["responses"]["200"]["content"]
     assert set(spec["components"]["schemas"]["QueuedTaskResponse"]["required"]) == {
         "status",
         "task_id",
