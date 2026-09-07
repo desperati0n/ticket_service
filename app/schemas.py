@@ -1,7 +1,7 @@
 """本模块定义 API 请求、响应和 SSE 事件的数据模型。"""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -60,13 +60,15 @@ class QueuedTasksResponse(BaseModel):
 
 
 class TaskStatusResponse(BaseModel):
-    """后台任务当前状态和最终处理结果。"""
+    """后台任务当前状态，以及与 Chat Agent 一致的事件和最终回复。"""
 
     kind: Literal["async_task"] | None = None
     task_id: str
     input: dict = Field(default_factory=dict)
     status: TaskStatus
     ticket_id: int | None = None
+    answer: str | None = None
+    events: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

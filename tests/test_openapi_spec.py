@@ -87,6 +87,9 @@ def test_async_task_openapi_matches_fastapi_runtime():
         "total",
         "tasks",
     }
+    task_status_properties = spec["components"]["schemas"]["TaskStatusResponse"]["properties"]
+    assert {"answer", "events"} <= set(task_status_properties)
+    assert task_status_properties["events"]["type"] == "array"
     batch_request = spec["paths"]["/ticket/task"]["post"]["requestBody"]["content"][
         "application/json"
     ]["schema"]["anyOf"][1]

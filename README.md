@@ -31,7 +31,7 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 {"status":"queued","total":1,"tasks":[{"status":"queued","task_id":"xxx","conversation_id":"yyy"}]}
 ```
 
-同一接口也接受由一条或多条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 并写入 Redis：
+同一接口也接受由一条或多条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 和全新的 `conversation_id` 后写入 Redis；即使请求中传入旧 `conversation_id` 也不会复用，以免不同任务的上下文混淆：
 
 ```json
 [
@@ -46,7 +46,7 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 {"status":"queued","total":2,"tasks":[{"status":"queued","task_id":"123","conversation_id":"xxx"},{"status":"queued","task_id":"124","conversation_id":"yyy"}]}
 ```
 
-使用 `GET /ticket/task/{task_id}` 查询 `queued`、`processing`、`success` 或 `failed` 状态。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
+使用 `GET /ticket/task/{task_id}` 查询 `queued`、`processing`、`success` 或 `failed` 状态。Worker 直接复用 `/chat/stream` 所使用的 `TicketAgent` 逻辑；任务结束后，查询结果中的 `answer` 是最终自然语言回复，`events` 包含与 Chat SSE 相同的完整 Agent 事件。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
 
 配置统一放在根目录 `.env`，示例见 `.env.example`。程序始终使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务；测试中的仓储替身仅位于 `tests/`，不会进入生产代码。
 

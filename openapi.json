@@ -197,7 +197,7 @@
     "/ticket/task": {
       "post": {
         "summary": "Enqueue Ticket Task",
-        "description": "接收单条或批量自然语言报修并立即投递到后台 Worker。",
+        "description": "接收单条或批量自然语言报修，为每个任务创建全新会话上下文并立即投递到后台 Worker。",
         "operationId": "enqueue_ticket_task_ticket_task_post",
         "requestBody": {
           "content": {
@@ -244,7 +244,7 @@
     "/ticket/task/{task_id}": {
       "get": {
         "summary": "Get Ticket Task",
-        "description": "查询后台任务状态和 Worker 写回的结果。",
+        "description": "查询后台任务状态，以及 Chat Agent 写回的完整事件和最终自然语言回复。",
         "operationId": "get_ticket_task_ticket_task__task_id__get",
         "parameters": [
           {
@@ -569,6 +569,25 @@
             ],
             "title": "Ticket Id"
           },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Events"
+          },
           "error": {
             "anyOf": [
               {
@@ -611,7 +630,7 @@
           "status"
         ],
         "title": "TaskStatusResponse",
-        "description": "后台任务当前状态和最终处理结果。"
+        "description": "后台任务当前状态，以及与 Chat Agent 一致的事件和最终回复。"
       },
       "QueuedTasksResponse": {
         "properties": {

@@ -83,9 +83,10 @@ def enqueue_ticket_task(
 
 
 def _enqueue_one_ticket_task(request: AgentRequest) -> QueuedTaskResponse:
-    """生成雪花任务 ID，记录任务并写入 Redis Stream。"""
+    """生成任务 ID，以全新会话上下文记录任务并写入 Redis Stream。"""
     task_id = request.request_id or str(id_generator.next_id())
-    conversation_id = request.conversation_id or str(uuid.uuid4())
+    # 队列中的每一项都是独立任务，不能复用调用方传入的旧会话历史。
+    conversation_id = str(uuid.uuid4())
     payload = {
         "message": request.message,
         "conversation_id": conversation_id,
