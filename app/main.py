@@ -15,7 +15,7 @@ from .agent import AgentRequest, TicketAgent
 from .ids import Snowflake
 from .real_repositories import MongoRepository, MySQLRepository
 from .queue import TaskQueue
-from .schemas import BatchQueuedResponse, QueuedTaskResponse, TaskStatusResponse, TicketRequest
+from .schemas import QueuedTaskResponse, QueuedTasksResponse, TaskStatusResponse, TicketRequest
 from .service import TicketFlow
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -70,17 +70,16 @@ def chat_stream(request: AgentRequest):
 @app.post(
     "/ticket/task",
     status_code=status.HTTP_202_ACCEPTED,
-    response_model=QueuedTaskResponse | BatchQueuedResponse,
+    response_model=QueuedTasksResponse,
     responses={503: {"description": "任务队列暂时不可用"}},
 )
 def enqueue_ticket_task(
     request: AgentRequest | Annotated[list[AgentRequest], Field(min_length=1)],
-) -> QueuedTaskResponse | BatchQueuedResponse:
+) -> QueuedTasksResponse:
     """接收单条或批量自然语言报修并立即投递到后台 Worker。"""
-    if isinstance(request, list):
-        tasks = [_enqueue_one_ticket_task(item) for item in request]
-        return BatchQueuedResponse(status="queued", total=len(tasks), tasks=tasks)
-    return _enqueue_one_ticket_task(request)
+    requests = request if isinstance(request, list) else [request]
+    tasks = [_enqueue_one_ticket_task(item) for item in requests]
+    return QueuedTasksResponse(status="queued", total=len(tasks), tasks=tasks)
 
 
 def _enqueue_one_ticket_task(request: AgentRequest) -> QueuedTaskResponse:

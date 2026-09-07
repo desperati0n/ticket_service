@@ -51,8 +51,8 @@ class QueuedTaskResponse(BaseModel):
     conversation_id: str
 
 
-class BatchQueuedResponse(BaseModel):
-    """批量任务全部完成入队后的立即响应。"""
+class QueuedTasksResponse(BaseModel):
+    """单条或批量任务完成入队后的统一响应。"""
 
     status: Literal["queued"]
     total: int = Field(ge=1)

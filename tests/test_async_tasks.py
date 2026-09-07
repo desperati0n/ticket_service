@@ -54,9 +54,12 @@ def test_task_endpoint_returns_immediately_after_enqueue(monkeypatch):
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "queued"
-    assert body["task_id"].isdigit()
+    assert body["total"] == 1
+    assert len(body["tasks"]) == 1
+    task = body["tasks"][0]
+    assert task["task_id"].isdigit()
     assert len(queue.enqueued) == 1
-    assert mongo.get_task(body["task_id"])["status"] == "queued"
+    assert mongo.get_task(task["task_id"])["status"] == "queued"
 
 
 def test_task_endpoint_accepts_batch_and_enqueues_each_item(monkeypatch):

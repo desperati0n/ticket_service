@@ -227,15 +227,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/QueuedTaskResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/BatchQueuedResponse"
-                    }
-                  ],
-                  "title": "Response Enqueue Ticket Task Ticket Task Post"
+                  "$ref": "#/components/schemas/QueuedTasksResponse"
                 }
               }
             }
@@ -621,7 +613,7 @@
         "title": "TaskStatusResponse",
         "description": "后台任务当前状态和最终处理结果。"
       },
-      "BatchQueuedResponse": {
+      "QueuedTasksResponse": {
         "properties": {
           "status": {
             "type": "string",
@@ -647,8 +639,8 @@
           "total",
           "tasks"
         ],
-        "title": "BatchQueuedResponse",
-        "description": "批量任务全部完成入队后的立即响应。"
+        "title": "QueuedTasksResponse",
+        "description": "单条或批量任务完成入队后的统一响应。"
       }
     },
     "responses": {

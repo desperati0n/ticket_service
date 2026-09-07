@@ -28,7 +28,7 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 返回示例：
 
 ```json
-{"status":"queued","task_id":"xxx","conversation_id":"yyy"}
+{"status":"queued","total":1,"tasks":[{"status":"queued","task_id":"xxx","conversation_id":"yyy"}]}
 ```
 
 同一接口也接受由一条或多条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 并写入 Redis：
@@ -40,7 +40,7 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 ]
 ```
 
-批量响应会返回 `total` 和每条任务的查询 ID：
+响应会返回 `total` 和每条任务的查询 ID：
 
 ```json
 {"status":"queued","total":2,"tasks":[{"status":"queued","task_id":"123","conversation_id":"xxx"},{"status":"queued","task_id":"124","conversation_id":"yyy"}]}
