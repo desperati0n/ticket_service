@@ -74,7 +74,7 @@ def chat_stream(request: AgentRequest):
     responses={503: {"description": "任务队列暂时不可用"}},
 )
 def enqueue_ticket_task(
-    request: AgentRequest | Annotated[list[AgentRequest], Field(min_length=1, max_length=100)],
+    request: AgentRequest | Annotated[list[AgentRequest], Field(min_length=1)],
 ) -> QueuedTaskResponse | BatchQueuedResponse:
     """接收单条或批量自然语言报修并立即投递到后台 Worker。"""
     if isinstance(request, list):

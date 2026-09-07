@@ -31,7 +31,7 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 {"status":"queued","task_id":"xxx","conversation_id":"yyy"}
 ```
 
-同一接口也接受 1 至 100 条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 并写入 Redis：
+同一接口也接受由一条或多条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 并写入 Redis：
 
 ```json
 [

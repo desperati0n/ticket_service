@@ -98,6 +98,22 @@ def test_task_endpoint_rejects_empty_batch(monkeypatch):
     assert response.status_code == 422
 
 
+def test_task_endpoint_does_not_hardcode_batch_size_limit(monkeypatch):
+    import app.main as app_main
+
+    queue = FakeQueue()
+    mongo = FakeTaskMongo()
+    monkeypatch.setattr(app_main, "task_queue", queue)
+    monkeypatch.setattr(app_main, "mongo_repository", mongo)
+    requests = [{"message": f"第 {index} 条报修"} for index in range(101)]
+
+    response = TestClient(app).post("/ticket/task", json=requests)
+
+    assert response.status_code == 202
+    assert response.json()["total"] == 101
+    assert len(queue.enqueued) == 101
+
+
 def test_worker_processes_task_and_acknowledges_message():
     queue = FakeQueue()
     mongo = FakeTaskMongo()

@@ -90,4 +90,4 @@ def test_async_task_openapi_matches_fastapi_runtime():
     ]["schema"]["anyOf"][1]
     assert batch_request["type"] == "array"
     assert batch_request["minItems"] == 1
-    assert batch_request["maxItems"] == 100
+    assert "maxItems" not in batch_request
