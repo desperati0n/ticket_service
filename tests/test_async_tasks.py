@@ -1,5 +1,7 @@
 """异步任务入队和 Worker 消费测试。"""
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -34,8 +36,20 @@ class CompletingQueue(FakeQueue):
             status="success",
             answer="报修已提交。",
             events=[
-                {"step": "answer", "status": "success", "data": {"message": "报修已提交。"}},
-                {"step": "done", "status": "success", "data": {"success": True, "ticket_id": 123}},
+                {
+                    "step": "answer",
+                    "status": "success",
+                    "data": {"message": "报修已提交。"},
+                    "request_id": task_id,
+                    "conversation_id": payload["conversation_id"],
+                },
+                {
+                    "step": "done",
+                    "status": "success",
+                    "data": {"success": True, "ticket_id": 123},
+                    "request_id": task_id,
+                    "conversation_id": payload["conversation_id"],
+                },
             ],
         )
         return message_id
@@ -98,8 +112,8 @@ def test_task_endpoint_always_uses_a_fresh_conversation(monkeypatch):
     """每个异步任务都应刷新上下文，不能沿用调用方提供的旧会话 ID。"""
     import app.main as app_main
 
-    queue = FakeQueue()
     mongo = FakeTaskMongo()
+    queue = CompletingQueue(mongo)
     monkeypatch.setattr(app_main, "task_queue", queue)
     monkeypatch.setattr(app_main, "mongo_repository", mongo)
 
@@ -108,16 +122,16 @@ def test_task_endpoint_always_uses_a_fresh_conversation(monkeypatch):
         json=[{"message": "新的独立报修", "conversation_id": "old-conversation"}],
     )
 
-    task = response.json()["tasks"][0]
-    assert task["conversation_id"] != "old-conversation"
-    assert queue.enqueued[0][1]["conversation_id"] == task["conversation_id"]
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert queue.enqueued[0][1]["conversation_id"] != "old-conversation"
 
 
-def test_task_endpoint_accepts_batch_and_enqueues_each_item(monkeypatch):
+def test_task_endpoint_accepts_batch_and_streams_each_timeline(monkeypatch):
     import app.main as app_main
 
-    queue = FakeQueue()
     mongo = FakeTaskMongo()
+    queue = CompletingQueue(mongo)
     monkeypatch.setattr(app_main, "task_queue", queue)
     monkeypatch.setattr(app_main, "mongo_repository", mongo)
 
@@ -130,15 +144,26 @@ def test_task_endpoint_accepts_batch_and_enqueues_each_item(monkeypatch):
         ],
     )
 
-    assert response.status_code == 202
-    body = response.json()
-    assert body["status"] == "queued"
-    assert body["total"] == 3
-    assert len(body["tasks"]) == 3
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.text.count("event: queued") == 3
+    assert response.text.count("event: answer") == 3
+    assert response.text.count("event: done") == 3
     assert len(queue.enqueued) == 3
-    assert len({task["task_id"] for task in body["tasks"]}) == 3
-    assert all(task["task_id"].isdigit() for task in body["tasks"])
-    assert all(mongo.get_task(task["task_id"])["status"] == "queued" for task in body["tasks"])
+    assert len({task_id for task_id, _ in queue.enqueued}) == 3
+    assert all(task_id.isdigit() for task_id, _ in queue.enqueued)
+    streamed_events = [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    streamed_chat_events = [event for event in streamed_events if event["step"] != "queued"]
+    original_chat_events = [
+        event
+        for task_id, _ in queue.enqueued
+        for event in mongo.get_task(task_id)["events"]
+    ]
+    assert streamed_chat_events == original_chat_events
 
 
 def test_task_endpoint_rejects_empty_batch(monkeypatch):
@@ -155,16 +180,17 @@ def test_task_endpoint_rejects_empty_batch(monkeypatch):
 def test_task_endpoint_does_not_hardcode_batch_size_limit(monkeypatch):
     import app.main as app_main
 
-    queue = FakeQueue()
     mongo = FakeTaskMongo()
+    queue = CompletingQueue(mongo)
     monkeypatch.setattr(app_main, "task_queue", queue)
     monkeypatch.setattr(app_main, "mongo_repository", mongo)
     requests = [{"message": f"第 {index} 条报修"} for index in range(101)]
 
     response = TestClient(app).post("/ticket/task", json=requests)
 
-    assert response.status_code == 202
-    assert response.json()["total"] == 101
+    assert response.status_code == 200
+    assert response.text.count("event: queued") == 101
+    assert response.text.count("event: done") == 101
     assert len(queue.enqueued) == 101
 
 

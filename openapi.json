@@ -197,7 +197,7 @@
     "/ticket/task": {
       "post": {
         "summary": "Enqueue Ticket Task",
-        "description": "单条任务入队后实时返回 Chat Agent SSE 时间线；批量任务创建独立会话上下文并立即返回任务 ID。",
+        "description": "单条或批量任务入队后，实时返回每个任务的 Chat Agent SSE 时间线。",
         "operationId": "enqueue_ticket_task_ticket_task_post",
         "requestBody": {
           "content": {
@@ -223,23 +223,13 @@
         },
         "responses": {
           "200": {
-            "description": "单条任务的 Chat Agent SSE 事件流",
+            "description": "单条或批量任务的 Chat Agent SSE 事件流",
             "content": {
               "text/event-stream": {
                 "schema": {
                   "type": "string"
                 },
                 "example": "event: queued\ndata: {\"seq\":0,\"step\":\"queued\",\"status\":\"success\",\"data\":{\"task_id\":\"123\"},\"request_id\":\"123\",\"conversation_id\":\"yyy\"}\n\nevent: answer\ndata: {\"seq\":9,\"step\":\"answer\",\"status\":\"success\",\"data\":{\"message\":\"报修已提交。\"},\"request_id\":\"123\",\"conversation_id\":\"yyy\"}\n\nevent: done\ndata: {\"seq\":10,\"step\":\"done\",\"status\":\"success\",\"data\":{\"success\":true,\"ticket_id\":456},\"request_id\":\"123\",\"conversation_id\":\"yyy\"}\n\n"
-              }
-            }
-          },
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueuedTasksResponse"
-                }
               }
             }
           },

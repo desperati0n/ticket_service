@@ -47,11 +47,7 @@ data: {"seq":10,"step":"done","status":"success","data":{"success":true,"ticket_
 ]
 ```
 
-批量请求仍会立即返回 `total` 和每条任务的查询 ID：
-
-```json
-{"status":"queued","total":2,"tasks":[{"status":"queued","task_id":"123","conversation_id":"xxx"},{"status":"queued","task_id":"124","conversation_id":"yyy"}]}
-```
+批量请求同样返回 `200 text/event-stream`：先为每条消息发送一个 `queued` 事件，再交错推送每个任务原样的 Chat Agent 事件。可通过每个事件中的 `request_id` 和 `conversation_id` 区分所属任务，连接会在所有任务都发送 `done` 后关闭。
 
 若 SSE 连接中断，可使用其中 `queued` 事件返回的 `task_id` 调用 `GET /ticket/task/{task_id}`，查询 `queued`、`processing`、`success` 或 `failed` 状态。Worker 直接复用 `/chat/stream` 所使用的 `TicketAgent` 逻辑；任务结束后，查询结果中的 `answer` 是最终自然语言回复，`events` 包含与 Chat SSE 相同的完整 Agent 事件。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
 

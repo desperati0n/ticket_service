@@ -16,7 +16,7 @@ from .agent import AgentRequest, TicketAgent
 from .ids import Snowflake
 from .real_repositories import MongoRepository, MySQLRepository
 from .queue import TaskQueue
-from .schemas import QueuedTaskResponse, QueuedTasksResponse, TaskStatusResponse, TicketRequest
+from .schemas import QueuedTaskResponse, TaskStatusResponse, TicketRequest
 from .service import TicketFlow
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -77,11 +77,10 @@ def chat_stream(request: AgentRequest):
 
 @app.post(
     "/ticket/task",
-    status_code=status.HTTP_202_ACCEPTED,
-    response_model=QueuedTasksResponse,
+    status_code=status.HTTP_200_OK,
     responses={
         200: {
-            "description": "单条任务的 Chat Agent SSE 事件流",
+            "description": "单条或批量任务的 Chat Agent SSE 事件流",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
         },
         503: {"description": "任务队列暂时不可用"},
@@ -89,87 +88,107 @@ def chat_stream(request: AgentRequest):
 )
 def enqueue_ticket_task(
     request: AgentRequest | Annotated[list[AgentRequest], Field(min_length=1)],
-) -> QueuedTasksResponse | StreamingResponse:
-    """单条任务实时返回 Chat 时间线；批量任务仍立即返回任务 ID。"""
-    if not isinstance(request, list):
-        task = _enqueue_one_ticket_task(request)
-        return StreamingResponse(
-            task_sse_stream(task),
-            status_code=status.HTTP_200_OK,
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+) -> StreamingResponse:
+    """单条和批量任务均实时返回各自完整的 Chat 时间线。"""
+    requests = request if isinstance(request, list) else [request]
+    tasks = [_enqueue_one_ticket_task(item) for item in requests]
+    return StreamingResponse(
+        tasks_sse_stream(tasks),
+        status_code=status.HTTP_200_OK,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def tasks_sse_stream(tasks: list[QueuedTaskResponse]):
+    """交错转发所有 Worker 任务的 Agent 事件，事件本身保持 Chat 原样。"""
+    for task in tasks:
+        yield _sse_frame(
+            {
+                "seq": 0,
+                "step": "queued",
+                "status": "success",
+                "data": {"task_id": task.task_id},
+                "request_id": task.task_id,
+                "conversation_id": task.conversation_id,
+            }
         )
 
-    tasks = [_enqueue_one_ticket_task(item) for item in request]
-    return QueuedTasksResponse(status="queued", total=len(tasks), tasks=tasks)
-
-
-def task_sse_stream(task: QueuedTaskResponse):
-    """将 Worker 持久化的 Agent 事件实时转发为与 Chat 相同的 SSE 时间线。"""
-    yield _sse_frame(
-        {
-            "seq": 0,
-            "step": "queued",
-            "status": "success",
-            "data": {"task_id": task.task_id},
-            "request_id": task.task_id,
-            "conversation_id": task.conversation_id,
-        }
-    )
     getter = getattr(mongo_repository, "get_task", None)
     deadline = time.monotonic() + TASK_STREAM_TIMEOUT_SECONDS
-    sent_events = 0
+    sent_events = {task.task_id: 0 for task in tasks}
+    finished: set[str] = set()
 
     while time.monotonic() < deadline:
-        current = getter(task.task_id) if getter is not None else None
-        if current is None:
-            yield _sse_frame(
-                {
-                    "step": "error",
-                    "status": "failed",
-                    "data": {"code": "TASK_NOT_FOUND", "message": "任务记录不存在"},
-                    "request_id": task.task_id,
-                    "conversation_id": task.conversation_id,
-                }
-            )
-            return
+        for task in tasks:
+            if task.task_id in finished:
+                continue
 
-        events = current.get("events") or []
-        for event in events[sent_events:]:
-            yield _sse_frame(event)
-        sent_events = len(events)
-
-        if current.get("status") in {"success", "failed"}:
-            if not any(event.get("step") == "done" for event in events):
+            current = getter(task.task_id) if getter is not None else None
+            if current is None:
                 yield _sse_frame(
                     {
-                        "step": "done",
+                        "step": "error",
                         "status": "failed",
-                        "data": {
-                            "success": False,
-                            "code": "TASK_FAILED",
-                            "message": current.get("error", "任务处理失败"),
-                        },
+                        "data": {"code": "TASK_NOT_FOUND", "message": "任务记录不存在"},
                         "request_id": task.task_id,
                         "conversation_id": task.conversation_id,
                     }
                 )
+                yield _sse_frame(
+                    {
+                        "step": "done",
+                        "status": "failed",
+                        "data": {"success": False, "code": "TASK_NOT_FOUND"},
+                        "request_id": task.task_id,
+                        "conversation_id": task.conversation_id,
+                    }
+                )
+                finished.add(task.task_id)
+                continue
+
+            events = current.get("events") or []
+            event_offset = sent_events[task.task_id]
+            for event in events[event_offset:]:
+                yield _sse_frame(event)
+            sent_events[task.task_id] = len(events)
+
+            if current.get("status") in {"success", "failed"}:
+                if not any(event.get("step") == "done" for event in events):
+                    yield _sse_frame(
+                        {
+                            "step": "done",
+                            "status": "failed",
+                            "data": {
+                                "success": False,
+                                "code": "TASK_FAILED",
+                                "message": current.get("error", "任务处理失败"),
+                            },
+                            "request_id": task.task_id,
+                            "conversation_id": task.conversation_id,
+                        }
+                    )
+                finished.add(task.task_id)
+
+        if len(finished) == len(tasks):
             return
         time.sleep(TASK_STREAM_POLL_SECONDS)
 
-    yield _sse_frame(
-        {
-            "step": "done",
-            "status": "failed",
-            "data": {
-                "success": False,
-                "code": "TASK_STREAM_TIMEOUT",
-                "message": "等待任务响应超时，可通过任务 ID 继续查询处理结果",
-            },
-            "request_id": task.task_id,
-            "conversation_id": task.conversation_id,
-        }
-    )
+    for task in tasks:
+        if task.task_id not in finished:
+            yield _sse_frame(
+                {
+                    "step": "done",
+                    "status": "failed",
+                    "data": {
+                        "success": False,
+                        "code": "TASK_STREAM_TIMEOUT",
+                        "message": "等待任务响应超时，可通过任务 ID 继续查询处理结果",
+                    },
+                    "request_id": task.task_id,
+                    "conversation_id": task.conversation_id,
+                }
+            )
 
 
 def _enqueue_one_ticket_task(request: AgentRequest) -> QueuedTaskResponse:
