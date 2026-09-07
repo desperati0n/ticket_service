@@ -7,6 +7,7 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from hashlib import sha256
 from typing import Any
 
 try:
@@ -35,8 +36,12 @@ class TaskQueue:
         self.group_name = group_name or os.getenv("REDIS_CONSUMER_GROUP", "ticket_workers")
         self.pending_idle_ms = int(os.getenv("REDIS_PENDING_IDLE_MS", "120000"))
         self.heartbeat_interval_seconds = float(os.getenv("REDIS_HEARTBEAT_INTERVAL_SECONDS", "30"))
+        self.conversation_lock_timeout_seconds = float(os.getenv("CONVERSATION_LOCK_TIMEOUT_SECONDS", "120"))
+        self.conversation_lock_refresh_seconds = float(os.getenv("CONVERSATION_LOCK_REFRESH_SECONDS", "30"))
         if self.pending_idle_ms <= self.heartbeat_interval_seconds * 1000:
             raise ValueError("REDIS_PENDING_IDLE_MS must be greater than the heartbeat interval")
+        if self.conversation_lock_timeout_seconds <= self.conversation_lock_refresh_seconds:
+            raise ValueError("CONVERSATION_LOCK_TIMEOUT_SECONDS must be greater than its refresh interval")
 
     def _ensure_group(self) -> None:
         if self.redis is None:
@@ -81,10 +86,16 @@ class TaskQueue:
         return rows[0][1] if rows else []
 
     def acknowledge(self, message_id: str) -> int:
-        """确认任务已处理。"""
+        """确认并删除已处理消息，避免 Redis Stream 无限增长。"""
         self._ensure_group()
         assert self.redis is not None
-        return self.redis.xack(self.stream_name, self.group_name, message_id)
+        acknowledged = self.redis.xack(self.stream_name, self.group_name, message_id)
+        if acknowledged:
+            try:
+                self.redis.xdel(self.stream_name, message_id)
+            except Exception:
+                pass
+        return acknowledged
 
     def touch(self, message_id: str, consumer_name: str) -> None:
         """刷新处理中消息的空闲时间，防止被其他 Worker 误认领。"""
@@ -119,3 +130,47 @@ class TaskQueue:
         finally:
             stopped.set()
             thread.join(timeout=self.heartbeat_interval_seconds)
+
+    @contextmanager
+    def serialize_conversation(self, conversation_id: str | None) -> Iterator[None]:
+        """串行处理同一对话，同时允许不同对话并发执行。"""
+        if not conversation_id:
+            yield
+            return
+        if self.redis is None:
+            raise RuntimeError("Redis dependency is not installed")
+
+        conversation_hash = sha256(conversation_id.encode("utf-8")).hexdigest()
+        lock = self.redis.lock(
+            f"ticket_conversation_lock:{conversation_hash}",
+            timeout=self.conversation_lock_timeout_seconds,
+            blocking_timeout=None,
+            thread_local=False,
+        )
+        if not lock.acquire(blocking=True):  # pragma: no cover - no timeout is configured
+            raise TimeoutError("could not acquire conversation lock")
+
+        stopped = threading.Event()
+
+        def refresh_lock() -> None:
+            while not stopped.wait(self.conversation_lock_refresh_seconds):
+                try:
+                    lock.extend(self.conversation_lock_timeout_seconds, replace_ttl=True)
+                except Exception:
+                    return
+
+        thread = threading.Thread(
+            target=refresh_lock,
+            name=f"conversation-lock-{conversation_hash[:12]}",
+            daemon=True,
+        )
+        thread.start()
+        try:
+            yield
+        finally:
+            stopped.set()
+            thread.join(timeout=self.conversation_lock_refresh_seconds)
+            try:
+                lock.release()
+            except Exception:
+                pass

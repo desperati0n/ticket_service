@@ -11,7 +11,7 @@ uvicorn app.main:app --reload
 
 ### 后台队列模式
 
-需要让请求立即返回、由后台 Worker 处理时，可以使用 Docker Compose 启动完整服务：
+所有 HTTP 工单入口都会先写入 Redis Stream，再由后台 Worker 处理。使用 Docker Compose 启动完整服务：
 
 ```powershell
 docker compose up -d --build api worker mysql mongo redis
@@ -46,7 +46,7 @@ event: done
 data: {"seq":10,"step":"done","status":"success","data":{"success":true,"ticket_id":456},"request_id":"123","conversation_id":"yyy"}
 ```
 
-同一接口也接受由一条或多条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 和全新的 `conversation_id` 后写入 Redis；即使请求中传入旧 `conversation_id` 也不会复用，以免不同任务的上下文混淆：
+同一接口也接受由一条或多条消息组成的 JSON 数组，用于批量导入。数组中的每条消息都会强制生成独立的 UUID `task_id` 和全新的 `conversation_id`；批量入队前还会清除当前客户端会话，因此下一次发送普通 JSON 时也会自动换用新的对话 ID：
 
 ```json
 [
@@ -57,7 +57,9 @@ data: {"seq":10,"step":"done","status":"success","data":{"success":true,"ticket_
 
 批量请求同样返回 `200 text/event-stream`：先为每条消息发送一个 `queued` 事件，再交错推送每个任务原样的 Chat Agent 事件。可通过每个事件中的 `request_id` 和 `conversation_id` 区分所属任务，连接会在所有任务都发送 `done` 后关闭。
 
-若 SSE 连接中断，可使用其中 `queued` 事件返回的 `task_id` 调用 `GET /ticket/task/{task_id}`，查询 `queued`、`processing`、`success` 或 `failed` 状态。Worker 直接复用 `/chat/stream` 所使用的 `TicketAgent` 逻辑；任务结束后，查询结果中的 `answer` 是最终自然语言回复，`events` 包含与 Chat SSE 相同的完整 Agent 事件。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
+普通 JSON 请求会通过 HttpOnly `ticket_session_id` Cookie 在 Redis 中保存当前 `conversation_id`，同一客户端后续发送单条消息时自动延续上下文。首次请求仍可显式传入 `conversation_id` 接入已有对话；之后以后端会话记录为准。`POST /chat/reset` 会立即创建并保存新的对话 ID。
+
+若 SSE 连接中断，可使用其中 `queued` 事件返回的 `task_id` 调用 `GET /ticket/task/{task_id}`，查询 `queued`、`processing`、`success` 或 `failed` 状态。任务结束后，查询结果中的 `answer` 是最终自然语言回复，`events` 包含完整处理事件。`/ticket/task`、`/chat/stream` 和结构化 `/ticket/stream` 都走相同的 Redis 队列与 Worker；同一 `conversation_id` 的自然语言任务会使用 Redis 分布式锁串行执行，不同会话仍可由多个 Worker 并行处理。
 
 配置统一放在根目录 `.env`，示例见 `.env.example`。程序始终使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务；测试中的仓储替身仅位于 `tests/`，不会进入生产代码。
 
@@ -100,7 +102,7 @@ curl -N -X POST http://127.0.0.1:8000/ticket/stream `
 
 自然语言入口使用 LangChain Agent，接口为 `POST /chat/stream`。Agent 支持工单增删改查；创建报修时会按照“提取信息 → 验证员工 → 验证员工资产 → 创建待处理工单”的顺序调用工具，最多执行 15 次工具调用。每次模型、工具和最终回复都会通过 SSE 推送，并记录到 MongoDB 的 `conversation_logs` 集合。
 
-准备提交新的工单时，可以先调用 `POST /chat/reset` 刷新上下文。接口会返回新的 `conversation_id`，后续请求将该 ID 传给 `/chat/stream`，即可开始不带旧历史的对话；继续当前工单时复用同一个 ID。
+准备提交新的工单时，可以调用 `POST /chat/reset` 刷新上下文。接口会返回新的 `conversation_id` 并更新会话 Cookie；继续当前工单时无需重复传 ID。非浏览器客户端需要在连续请求间保存并回传 Cookie。
 
 模型配置示例（统一写入根目录 `.env`）：
 

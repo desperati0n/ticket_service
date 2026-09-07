@@ -123,6 +123,7 @@ def test_structured_request_stream_creates_ticket(repositories):
         },
     )
     assert response.status_code == 200
+    assert "event: queued" in response.text
     assert "event: ticket_created" in response.text
     assert "event: done" in response.text
     assert len(mysql_repository.tickets) == before + 1
@@ -144,7 +145,8 @@ def test_unknown_employee_returns_error_event(repositories):
     )
     assert response.status_code == 200
     assert "EMPLOYEE_NOT_FOUND" in response.text
-    assert "event: done" not in response.text
+    assert "event: done" in response.text
+    assert '"status": "failed"' in response.text
 
 
 def test_unassigned_or_unknown_asset_does_not_create_ticket(repositories):

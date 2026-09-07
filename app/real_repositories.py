@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import os
+import threading
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
@@ -174,6 +175,31 @@ class MongoRepository:
         collection = os.getenv("MONGO_COLLECTION", "conversation_logs")
         self.client = MongoClient(uri, serverSelectionTimeoutMS=2000)
         self.collection = self.client[database][collection]
+        self._indexes_ready = False
+        self._index_lock = threading.Lock()
+
+    def _ensure_indexes(self) -> None:
+        """每个仓储进程只初始化一次任务和对话索引。"""
+        if self._indexes_ready:
+            return
+        with self._index_lock:
+            if self._indexes_ready:
+                return
+            self.collection.create_index(
+                [("kind", 1), ("task_id", 1)],
+                name="async_task_identity",
+                unique=True,
+                partialFilterExpression={"kind": "async_task"},
+            )
+            self.collection.create_index(
+                [("conversation_id", 1), ("status", 1), ("created_at", -1)],
+                name="conversation_history",
+            )
+            self.collection.create_index(
+                [("request_id", 1), ("status", 1), ("updated_at", -1)],
+                name="agent_request_result",
+            )
+            self._indexes_ready = True
 
     def start_log(self, request_id: str, payload: dict) -> dict:
         """将原始请求写入一条新的 MongoDB 文档。"""
@@ -194,6 +220,7 @@ class MongoRepository:
 
     def start_agent_log(self, conversation_id: str, request_id: str, message: str) -> dict:
         """创建一条自然语言 Agent 执行日志。"""
+        self._ensure_indexes()
         log = {
             "conversation_id": conversation_id,
             "request_id": request_id,
@@ -207,6 +234,7 @@ class MongoRepository:
 
     def create_task(self, task_id: str, payload: dict) -> dict:
         """记录一个已接受的异步任务，供状态查询和 Worker 更新。"""
+        self._ensure_indexes()
         task = {
             "kind": "async_task",
             "task_id": task_id,
@@ -215,12 +243,24 @@ class MongoRepository:
             "events": [],
             "created_at": datetime.now(timezone.utc),
         }
-        self.collection.insert_one(task)
-        return task
+        self.collection.update_one(
+            {"kind": "async_task", "task_id": task_id},
+            {"$setOnInsert": task},
+            upsert=True,
+        )
+        return self.get_task(task_id) or task
 
     def get_task(self, task_id: str) -> dict | None:
         """读取异步任务状态。"""
         return self.collection.find_one({"kind": "async_task", "task_id": task_id}, {"_id": 0})
+
+    def get_tasks(self, task_ids: list[str]) -> dict[str, dict]:
+        """批量读取一次 SSE 轮询需要的异步任务。"""
+        rows = self.collection.find(
+            {"kind": "async_task", "task_id": {"$in": task_ids}},
+            {"_id": 0},
+        )
+        return {row["task_id"]: row for row in rows}
 
     def update_task(self, task_id: str, **fields: Any) -> None:
         """更新异步任务状态和处理结果。"""
@@ -270,14 +310,16 @@ class MongoRepository:
 
     def get_agent_history(self, conversation_id: str, limit: int = 20) -> list[dict[str, str]]:
         """读取同一会话最近完成的用户消息和助手回复。"""
-        rows = (
+        self._ensure_indexes()
+        rows = list(
             self.collection.find(
                 {"conversation_id": conversation_id, "status": "success"},
                 {"_id": 0, "input.message": 1, "assistant_message": 1, "created_at": 1},
             )
-            .sort("created_at", 1)
+            .sort("created_at", -1)
             .limit(limit)
         )
+        rows.reverse()
         history: list[dict[str, str]] = []
         for row in rows:
             message = row.get("input", {}).get("message")
@@ -287,3 +329,23 @@ class MongoRepository:
             if assistant_message:
                 history.append({"role": "assistant", "content": assistant_message})
         return history
+
+    def get_agent_result(self, request_id: str) -> dict | None:
+        """读取已结束的 Agent 结果，避免认领任务后重复执行模型。"""
+        self._ensure_indexes()
+        return self.collection.find_one(
+            {
+                "request_id": request_id,
+                "status": {"$in": ["success", "failed"]},
+                "events": {"$exists": True},
+            },
+            {
+                "_id": 0,
+                "status": 1,
+                "ticket_id": 1,
+                "assistant_message": 1,
+                "events": 1,
+                "error": 1,
+            },
+            sort=[("updated_at", -1)],
+        )

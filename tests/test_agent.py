@@ -201,6 +201,39 @@ def test_invalid_tool_arguments_are_returned_to_model(repositories):
     assert events[-2]["data"]["message"] == "请提供有效的员工工号。"
 
 
+def test_mongo_history_returns_latest_turns_in_chronological_order():
+    """历史超过上限时应保留最近内容，并按对话发生顺序交给模型。"""
+    from app.real_repositories import MongoRepository
+
+    class Cursor(list):
+        def sort(self, field, direction):
+            return Cursor(sorted(self, key=lambda row: row[field], reverse=direction < 0))
+
+        def limit(self, size):
+            return Cursor(self[:size])
+
+    class Collection:
+        def find(self, query, projection):
+            return Cursor(
+                [
+                    {"created_at": 1, "input": {"message": "旧问题"}, "assistant_message": "旧回答"},
+                    {"created_at": 2, "input": {"message": "新问题1"}, "assistant_message": "新回答1"},
+                    {"created_at": 3, "input": {"message": "新问题2"}, "assistant_message": "新回答2"},
+                ]
+            )
+
+    repository = MongoRepository.__new__(MongoRepository)
+    repository.collection = Collection()
+    repository._ensure_indexes = lambda: None
+
+    assert repository.get_agent_history("conversation-1", limit=2) == [
+        {"role": "user", "content": "新问题1"},
+        {"role": "assistant", "content": "新回答1"},
+        {"role": "user", "content": "新问题2"},
+        {"role": "assistant", "content": "新回答2"},
+    ]
+
+
 def test_chat_stream_exposes_agent_events(repositories, monkeypatch):
     """FastAPI 自然语言入口应按 SSE 返回 Agent 事件。"""
     mysql, _ = repositories
@@ -215,19 +248,33 @@ def test_chat_stream_exposes_agent_events(repositories, monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: queued" in response.text
     assert "event: tool_started" in response.text
     assert "event: answer" in response.text
     assert "event: done" in response.text
 
 
-def test_chat_reset_returns_new_conversation_id():
+def test_chat_reset_returns_new_conversation_id(monkeypatch):
     """重置接口应返回可用于下一轮对话的新会话 ID。"""
-    response = TestClient(app).post("/chat/reset")
+    import app.main as app_main
+
+    class Sessions:
+        ttl_seconds = 604800
+
+        def __init__(self):
+            self.values = {}
+
+        def set(self, session_id, conversation_id):
+            self.values[session_id] = conversation_id
+
+    monkeypatch.setattr(app_main, "conversation_sessions", Sessions())
+    client = TestClient(app)
+    response = client.post("/chat/reset")
 
     assert response.status_code == 200
     body = response.json()
     assert body["reset"] is True
     UUID(body["conversation_id"])
 
-    second = TestClient(app).post("/chat/reset").json()
+    second = client.post("/chat/reset").json()
     assert second["conversation_id"] != body["conversation_id"]

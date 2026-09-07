@@ -68,6 +68,7 @@ class FakeMongo:
 
     def __init__(self):
         self.logs = []
+        self.tasks = {}
 
     def start_log(self, request_id, payload):
         log = {"request_id": request_id, "input": payload, "steps": [], "status": "started"}
@@ -82,6 +83,42 @@ class FakeMongo:
         if error:
             log["error"] = error
 
+    def create_task(self, task_id, payload):
+        task = {"kind": "async_task", "task_id": task_id, "input": payload, "status": "queued", "events": []}
+        self.tasks[task_id] = task
+        return task
+
+    def get_task(self, task_id):
+        return self.tasks.get(task_id)
+
+    def get_tasks(self, task_ids):
+        return {task_id: self.tasks[task_id] for task_id in task_ids if task_id in self.tasks}
+
+    def update_task(self, task_id, **fields):
+        self.tasks[task_id].update(fields)
+
+    def append_task_event(self, task_id, event):
+        self.tasks[task_id]["events"].append(event)
+
+
+class FakeConversationSessions:
+    ttl_seconds = 604800
+
+    def __init__(self):
+        self.values = {}
+
+    def get(self, session_id):
+        return self.values.get(session_id)
+
+    def set(self, session_id, conversation_id):
+        self.values[session_id] = conversation_id
+
+    def resolve(self, session_id, candidate_conversation_id):
+        return self.values.setdefault(session_id, candidate_conversation_id)
+
+    def clear(self, session_id):
+        self.values.pop(session_id, None)
+
 
 @pytest.fixture
 def repositories(monkeypatch):
@@ -93,6 +130,32 @@ def repositories(monkeypatch):
     monkeypatch.setattr(app_main, "mysql_repository", mysql)
     monkeypatch.setattr(app_main, "mongo_repository", mongo)
     monkeypatch.setattr(app_main, "flow", TicketFlow(mysql, mongo))
+    monkeypatch.setattr(app_main, "conversation_sessions", FakeConversationSessions())
+
+    class ImmediateQueue:
+        def __init__(self):
+            self.acked = []
+
+        def enqueue(self, task_id, payload):
+            import json
+
+            from worker import process_message
+
+            process_message(
+                f"redis-{task_id}",
+                {"task_id": task_id, "payload": json.dumps(payload, ensure_ascii=False)},
+                queue=self,
+                agent=app_main.ticket_agent,
+                mongo=app_main.mongo_repository,
+                flow=app_main.flow,
+            )
+            return f"redis-{task_id}"
+
+        def acknowledge(self, message_id):
+            self.acked.append(message_id)
+            return 1
+
+    monkeypatch.setattr(app_main, "task_queue", ImmediateQueue())
     import app.cli as app_cli
 
     monkeypatch.setattr(app_cli, "flow", app_main.flow)
