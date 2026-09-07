@@ -51,6 +51,14 @@ class QueuedTaskResponse(BaseModel):
     conversation_id: str
 
 
+class BatchQueuedResponse(BaseModel):
+    """批量任务全部完成入队后的立即响应。"""
+
+    status: Literal["queued"]
+    total: int = Field(ge=1)
+    tasks: list[QueuedTaskResponse]
+
+
 class TaskStatusResponse(BaseModel):
     """后台任务当前状态和最终处理结果。"""
 

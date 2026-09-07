@@ -4,20 +4,22 @@ import json
 import os
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
+from pydantic import Field
 
 from .agent import AgentRequest, TicketAgent
 from .ids import Snowflake
 from .real_repositories import MongoRepository, MySQLRepository
 from .queue import TaskQueue
-from .schemas import QueuedTaskResponse, TaskStatusResponse, TicketRequest
+from .schemas import BatchQueuedResponse, QueuedTaskResponse, TaskStatusResponse, TicketRequest
 from .service import TicketFlow
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-id_generator = Snowflake()
+id_generator = Snowflake(worker_id=int(os.getenv("SNOWFLAKE_API_WORKER_ID", "1")))
 mysql_repository = MySQLRepository(id_generator)
 mongo_repository = MongoRepository()
 flow = TicketFlow(mysql_repository, mongo_repository)
@@ -68,12 +70,22 @@ def chat_stream(request: AgentRequest):
 @app.post(
     "/ticket/task",
     status_code=status.HTTP_202_ACCEPTED,
-    response_model=QueuedTaskResponse,
+    response_model=QueuedTaskResponse | BatchQueuedResponse,
     responses={503: {"description": "任务队列暂时不可用"}},
 )
-def enqueue_ticket_task(request: AgentRequest) -> QueuedTaskResponse:
-    """接收自然语言报修并立即投递到后台 Worker。"""
-    task_id = request.request_id or str(uuid.uuid4())
+def enqueue_ticket_task(
+    request: AgentRequest | Annotated[list[AgentRequest], Field(min_length=1, max_length=100)],
+) -> QueuedTaskResponse | BatchQueuedResponse:
+    """接收单条或批量自然语言报修并立即投递到后台 Worker。"""
+    if isinstance(request, list):
+        tasks = [_enqueue_one_ticket_task(item) for item in request]
+        return BatchQueuedResponse(status="queued", total=len(tasks), tasks=tasks)
+    return _enqueue_one_ticket_task(request)
+
+
+def _enqueue_one_ticket_task(request: AgentRequest) -> QueuedTaskResponse:
+    """生成雪花任务 ID，记录任务并写入 Redis Stream。"""
+    task_id = request.request_id or str(id_generator.next_id())
     conversation_id = request.conversation_id or str(uuid.uuid4())
     payload = {
         "message": request.message,

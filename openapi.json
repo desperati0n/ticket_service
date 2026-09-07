@@ -197,13 +197,26 @@
     "/ticket/task": {
       "post": {
         "summary": "Enqueue Ticket Task",
-        "description": "接收自然语言报修并立即投递到后台 Worker。",
+        "description": "接收单条或批量自然语言报修并立即投递到后台 Worker。",
         "operationId": "enqueue_ticket_task_ticket_task_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AgentRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentRequest"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/components/schemas/AgentRequest"
+                    },
+                    "type": "array",
+                    "maxItems": 100,
+                    "minItems": 1
+                  }
+                ],
+                "title": "Request"
               }
             }
           },
@@ -215,7 +228,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/QueuedTaskResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/QueuedTaskResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BatchQueuedResponse"
+                    }
+                  ],
+                  "title": "Response Enqueue Ticket Task Ticket Task Post"
                 }
               }
             }
@@ -600,6 +621,35 @@
         ],
         "title": "TaskStatusResponse",
         "description": "后台任务当前状态和最终处理结果。"
+      },
+      "BatchQueuedResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "queued",
+            "title": "Status"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Total"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/QueuedTaskResponse"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "total",
+          "tasks"
+        ],
+        "title": "BatchQueuedResponse",
+        "description": "批量任务全部完成入队后的立即响应。"
       }
     },
     "responses": {

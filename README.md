@@ -31,6 +31,21 @@ curl -X POST http://127.0.0.1:8000/ticket/task `
 {"status":"queued","task_id":"xxx","conversation_id":"yyy"}
 ```
 
+同一接口也接受 1 至 100 条消息组成的 JSON 数组。每条消息会生成独立的雪花 `task_id` 并写入 Redis：
+
+```json
+[
+  {"message":"工号 10001，Dell 显示器无法点亮"},
+  {"message":"工号 10005，惠普打印机一直卡纸"}
+]
+```
+
+批量响应会返回 `total` 和每条任务的查询 ID：
+
+```json
+{"status":"queued","total":2,"tasks":[{"status":"queued","task_id":"123","conversation_id":"xxx"},{"status":"queued","task_id":"124","conversation_id":"yyy"}]}
+```
+
 使用 `GET /ticket/task/{task_id}` 查询 `queued`、`processing`、`success` 或 `failed` 状态。原有 `/chat/stream` 和 `/ticket/stream` 接口仍可用于同步 SSE 调试。
 
 配置统一放在根目录 `.env`，示例见 `.env.example`。程序始终使用 `.env` 中的 MySQL/MongoDB 参数连接真实服务；测试中的仓储替身仅位于 `tests/`，不会进入生产代码。
