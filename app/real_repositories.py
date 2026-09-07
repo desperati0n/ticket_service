@@ -36,9 +36,8 @@ def _repair_row(row):
 class MySQLRepository:
     """MySQL 仓储负责员工、资产和工单的持久化。"""
 
-    def __init__(self, id_generator):
+    def __init__(self):
         """根据环境配置创建 UTF-8 MySQL 连接池。"""
-        self._id = id_generator
         user = os.getenv("MYSQL_USER", "ticket_service")
         password = quote_plus(os.getenv("MYSQL_PASSWORD", ""))
         host = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -77,30 +76,40 @@ class MySQLRepository:
                 return asset
         return None
 
-    def create_ticket(self, *, employee: Employee, asset: Asset, issue: str) -> dict:
-        """向 MySQL 写入一张待处理工单并返回保存值。"""
+    def create_ticket(
+        self,
+        *,
+        employee: Employee,
+        asset: Asset,
+        issue: str,
+        request_id: str | None = None,
+    ) -> dict:
+        """并发安全地写入待处理工单；相同请求 ID 只创建一次。"""
         if asset is None:
             raise ValueError("asset must be verified before creating a ticket")
-        ticket_id = self._id.next_id()
         created_at = datetime.now(timezone.utc)
         with self.engine.begin() as conn:
-            conn.execute(
+            result = conn.execute(
                 text("""
-                    INSERT INTO tickets (id, employee_id, asset_id, issue, status, created_at)
-                    VALUES (:id, :employee_id, :asset_id, :issue, 'PENDING', :created_at)
+                    INSERT INTO tickets (request_id, employee_id, asset_id, issue, status, created_at)
+                    VALUES (:request_id, :employee_id, :asset_id, :issue, 'PENDING', :created_at)
+                    ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)
                 """),
-                {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id,
+                {"request_id": request_id, "employee_id": employee.id, "asset_id": asset.id,
                  "issue": issue, "created_at": created_at},
             )
-        return {"id": ticket_id, "employee_id": employee.id, "asset_id": asset.id,
-                "issue": issue, "status": "PENDING", "created_at": created_at.isoformat()}
+            ticket_id = int(result.lastrowid)
+        ticket = self.get_ticket(ticket_id)
+        if ticket is None:  # pragma: no cover - 写入成功后属于数据库异常
+            raise RuntimeError("ticket was inserted but could not be read back")
+        return ticket
 
     def get_ticket(self, ticket_id: int) -> dict | None:
         """按 ID 查询一张包含关联信息的工单。"""
         with self.engine.connect() as conn:
             row = conn.execute(
                 text("""
-                    SELECT t.id, t.employee_id, e.employee_no, e.name AS employee_name,
+                    SELECT t.id, t.request_id, t.employee_id, e.employee_no, e.name AS employee_name,
                            t.asset_id, a.asset_code, a.name AS asset_name,
                            t.issue, t.status, t.created_at
                     FROM tickets t
@@ -115,7 +124,7 @@ class MySQLRepository:
     def list_tickets(self, employee_no: str | None = None) -> list[dict]:
         """查询工单列表并可按员工工号筛选。"""
         query = """
-            SELECT t.id, t.employee_id, e.employee_no, e.name AS employee_name,
+            SELECT t.id, t.request_id, t.employee_id, e.employee_no, e.name AS employee_name,
                    t.asset_id, a.asset_code, a.name AS asset_name,
                    t.issue, t.status, t.created_at
             FROM tickets t

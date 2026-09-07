@@ -123,3 +123,23 @@ def test_create_ticket_is_idempotent_within_agent_session(repositories):
     assert second["code"] == "TICKET_ALREADY_CREATED"
     assert second["data"]["ticket_id"] == first["data"]["ticket_id"]
     assert len(mysql.tickets) == 1
+
+
+def test_retried_agent_task_reuses_ticket_by_request_id(repositories):
+    """Worker 崩溃后重跑同一任务时，不得创建第二张工单。"""
+    mysql, _ = repositories
+
+    def run_once():
+        tools, _ = _tools_by_name(
+            mysql,
+            AgentSessionState(conversation_id="retry-conversation", request_id="task-10086"),
+        )
+        tools["verify_employee"].invoke({"employee_no": "10086"})
+        tools["verify_employee_asset"].invoke({"asset_description": "Dell"})
+        return tools["create_ticket"].invoke({"problem_description": "无法点亮"})
+
+    first = run_once()
+    retried = run_once()
+
+    assert first["data"]["ticket_id"] == retried["data"]["ticket_id"]
+    assert len(mysql.tickets) == 1

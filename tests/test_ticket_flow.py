@@ -29,11 +29,54 @@ def test_health():
 
 def test_repository_converts_mysql_port_from_env():
     """真实仓储应在使用配置时将 MySQL 端口转换成整数。"""
-    from app.ids import Snowflake
     from app.real_repositories import MySQLRepository
 
-    repository = MySQLRepository(Snowflake())
+    repository = MySQLRepository()
     assert repository.engine.url.port == 3306
+
+
+def test_repository_uses_mysql_generated_id_and_request_idempotency_key():
+    """真实仓储插入时不再依赖进程内 Snowflake 节点编号。"""
+    from app.models import Asset, Employee
+    from app.real_repositories import MySQLRepository
+
+    executed = {}
+
+    class Result:
+        lastrowid = 456
+
+    class Connection:
+        def execute(self, statement, params):
+            executed["sql"] = str(statement)
+            executed["params"] = params
+            return Result()
+
+    class Transaction:
+        def __enter__(self):
+            return Connection()
+
+        def __exit__(self, *args):
+            return False
+
+    class Engine:
+        def begin(self):
+            return Transaction()
+
+    repository = MySQLRepository()
+    repository.engine = Engine()
+    repository.get_ticket = lambda ticket_id: {"id": ticket_id, "status": "PENDING"}
+
+    ticket = repository.create_ticket(
+        employee=Employee(10086, "10086", "张三", "研发部"),
+        asset=Asset(1, "A-001", "Dell 显示器"),
+        issue="无法点亮",
+        request_id="task-456",
+    )
+
+    assert ticket["id"] == 456
+    assert "INSERT INTO tickets (request_id" in executed["sql"]
+    assert "LAST_INSERT_ID(id)" in executed["sql"]
+    assert executed["params"]["request_id"] == "task-456"
 
 
 def test_repository_repairs_legacy_mojibake():
@@ -54,6 +97,17 @@ def test_mysql_seed_contains_many_to_many_data():
     assert employee_values.count("),") + 1 >= 10
     assert asset_values.count("),") + 1 >= 10
     assert sql.count("INSERT IGNORE INTO employee_assets") == 1
+
+
+def test_mysql_schema_and_migration_support_concurrent_worker_ids():
+    """新旧数据卷都应升级为 MySQL 自增 ID，并按请求 ID 保证幂等。"""
+    init_sql = Path("mysql/init.sql").read_text(encoding="utf-8")
+    migrate_sql = Path("mysql/migrate.sql").read_text(encoding="utf-8")
+
+    assert "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY" in init_sql
+    assert "CONSTRAINT uq_tickets_request_id UNIQUE (request_id)" in init_sql
+    assert "MODIFY COLUMN id BIGINT NOT NULL AUTO_INCREMENT" in migrate_sql
+    assert "ADD UNIQUE INDEX uq_tickets_request_id" in migrate_sql
 
 
 def test_structured_request_stream_creates_ticket(repositories):

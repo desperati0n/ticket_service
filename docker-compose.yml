@@ -17,6 +17,22 @@ services:
       timeout: 5s
       retries: 20
 
+  mysql-migrate:
+    image: mysql:8.4
+    environment:
+      MYSQL_PWD: ${MYSQL_PASSWORD:-change-me}
+      MYSQL_USER: ${MYSQL_USER:-ticket_service}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ticket_service}
+    volumes:
+      - ./mysql/migrate.sql:/migrations/migrate.sql:ro
+    command:
+      - sh
+      - -c
+      - until mysqladmin ping --host=mysql --user="$${MYSQL_USER}" --silent; do sleep 2; done; exec mysql --host=mysql --user="$${MYSQL_USER}" "$${MYSQL_DATABASE}" < /migrations/migrate.sql
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   mongo:
     image: mongo:8
     ports:
@@ -66,8 +82,8 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
     depends_on:
-      mysql:
-        condition: service_healthy
+      mysql-migrate:
+        condition: service_completed_successfully
       mongo:
         condition: service_healthy
       redis:
@@ -76,6 +92,7 @@ services:
   worker:
     build: .
     command: python worker.py
+    restart: unless-stopped
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
@@ -88,18 +105,20 @@ services:
       REDIS_URL: redis://redis:6379/0
       REDIS_STREAM: ${REDIS_STREAM:-ticket_tasks}
       REDIS_CONSUMER_GROUP: ${REDIS_CONSUMER_GROUP:-ticket_workers}
-      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID:-2}
+      REDIS_PENDING_IDLE_MS: ${REDIS_PENDING_IDLE_MS:-120000}
+      REDIS_HEARTBEAT_INTERVAL_SECONDS: ${REDIS_HEARTBEAT_INTERVAL_SECONDS:-30}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
     depends_on:
-      mysql:
-        condition: service_healthy
+      mysql-migrate:
+        condition: service_completed_successfully
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+    scale: ${WORKER_REPLICAS:-4}
 
   adminer:
     image: adminer:4

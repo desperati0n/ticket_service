@@ -17,6 +17,14 @@ uvicorn app.main:app --reload
 docker compose up -d --build api worker mysql mongo redis
 ```
 
+默认会启动 4 个 Worker，它们使用同一个 Redis Stream Consumer Group 竞争消费任务。可在 `.env` 中通过 `WORKER_REPLICAS` 调整副本数，或临时覆盖：
+
+```powershell
+docker compose up -d --build --scale worker=6
+```
+
+每个容器以自身 hostname 作为 Consumer 名称。处理中消息会定时刷新所有权；Worker 异常退出后，超过 `REDIS_PENDING_IDLE_MS` 的 Pending 消息会由其他 Worker 自动认领。`REDIS_HEARTBEAT_INTERVAL_SECONDS` 必须小于 Pending 超时时间。工单 ID 由 MySQL 自增生成，并以任务 `request_id` 做唯一约束，保证并发创建和任务重试不会重复落单。已有 MySQL 数据卷会在服务启动时由 `mysql-migrate` 自动升级。
+
 提交单条异步自然语言工单后，接口会先通过 `queued` 事件返回任务 ID，再持续推送处理时间线；LLM 调用、员工/资产校验和 MySQL 建单由 `worker.py` 在后台完成：
 
 ```powershell

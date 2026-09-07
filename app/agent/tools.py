@@ -153,6 +153,7 @@ def build_ticket_tools(mysql: Any, state: AgentSessionState) -> list[BaseTool]:
             employee=employee_check.value,
             asset=asset_check.value,
             issue=problem_check.value,
+            request_id=state.request_id,
         )
         state.created_ticket_id = ticket["id"]
         state.problem_description = problem_check.value

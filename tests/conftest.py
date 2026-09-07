@@ -27,9 +27,14 @@ class FakeMySQL:
         asset_ids = self.employee_assets.get(employee_id, set())
         return next((asset for asset in self.assets if asset.id in asset_ids and description in asset.name.lower()), None)
 
-    def create_ticket(self, *, employee, asset, issue):
+    def create_ticket(self, *, employee, asset, issue, request_id=None):
+        if request_id is not None:
+            existing = next((ticket for ticket in self.tickets if ticket.get("request_id") == request_id), None)
+            if existing is not None:
+                return existing
         ticket = {"id": self._id.next_id(), "employee_id": employee.id, "asset_id": asset.id if asset else None,
-                  "issue": issue, "status": "PENDING", "created_at": datetime.now(timezone.utc).isoformat()}
+                  "request_id": request_id, "issue": issue, "status": "PENDING",
+                  "created_at": datetime.now(timezone.utc).isoformat()}
         self.tickets.append(ticket)
         return ticket
 

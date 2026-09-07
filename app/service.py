@@ -64,6 +64,7 @@ class TicketFlow:
             employee=employee,
             asset=asset,
             issue=request.problem_description or "",
+            request_id=request_id,
         )
         yield emit("ticket_created", "success", {"ticket_id": ticket["id"], "status": ticket["status"]})
         self.mongo.finish_log(log, status="success", ticket_id=ticket["id"])

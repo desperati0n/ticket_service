@@ -21,7 +21,7 @@ from .service import TicketFlow
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 id_generator = Snowflake(worker_id=int(os.getenv("SNOWFLAKE_API_WORKER_ID", "1")))
-mysql_repository = MySQLRepository(id_generator)
+mysql_repository = MySQLRepository()
 mongo_repository = MongoRepository()
 flow = TicketFlow(mysql_repository, mongo_repository)
 ticket_agent = TicketAgent(mysql_repository, mongo_repository)

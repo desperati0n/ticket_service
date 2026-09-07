@@ -1,10 +1,12 @@
 """异步任务入队和 Worker 消费测试。"""
 
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.queue import TaskQueue
 from worker import process_message
 
 
@@ -88,6 +90,38 @@ class FakeAgent:
             "data": {"message": "报修已提交，工单状态为待处理。"},
         }
         yield {"step": "done", "status": "success", "data": {"success": True, "ticket_id": 123}}
+
+
+class FakeRedisStream:
+    def __init__(self, *, claimed=None, new_rows=None):
+        self.claimed = claimed or []
+        self.new_rows = new_rows or []
+        self.read_calls = []
+        self.claim_calls = []
+
+    def xgroup_create(self, *args, **kwargs):
+        return True
+
+    def xautoclaim(self, *args, **kwargs):
+        return ["0-0", self.claimed, []]
+
+    def xreadgroup(self, *args, **kwargs):
+        self.read_calls.append((args, kwargs))
+        return self.new_rows
+
+    def xclaim(self, *args, **kwargs):
+        self.claim_calls.append((args, kwargs))
+        return []
+
+
+def _task_queue_with(redis):
+    queue = TaskQueue.__new__(TaskQueue)
+    queue.redis = redis
+    queue.stream_name = "ticket_tasks"
+    queue.group_name = "ticket_workers"
+    queue.pending_idle_ms = 120000
+    queue.heartbeat_interval_seconds = 30
+    return queue
 
 
 def test_single_task_endpoint_streams_chat_timeline(monkeypatch):
@@ -216,6 +250,64 @@ def test_worker_processes_task_and_acknowledges_message():
     assert [event["step"] for event in mongo.appended_events] == ["answer", "done"]
     assert agent.requests[0].message == "显示器坏了"
     assert queue.acked == ["redis-1"]
+
+
+def test_worker_acknowledges_already_completed_reclaimed_task_without_rerun():
+    queue = FakeQueue()
+    mongo = FakeTaskMongo()
+    agent = FakeAgent()
+    mongo.create_task("task-1", {"message": "显示器坏了"})
+    mongo.update_task("task-1", status="success", ticket_id=123)
+
+    process_message(
+        "redis-pending-1",
+        {"task_id": "task-1", "payload": '{"message": "显示器坏了"}'},
+        queue=queue,
+        agent=agent,
+        mongo=mongo,
+    )
+
+    assert agent.requests == []
+    assert queue.acked == ["redis-pending-1"]
+
+
+def test_queue_reclaims_stale_pending_message_before_reading_new_work():
+    pending = [("1-0", {"task_id": "task-1", "payload": "{}"})]
+    redis = FakeRedisStream(claimed=pending)
+    queue = _task_queue_with(redis)
+
+    assert queue.consume("worker-2") == pending
+    assert redis.read_calls == []
+
+
+def test_queue_reads_new_work_when_no_stale_pending_message_exists():
+    rows = [("ticket_tasks", [("2-0", {"task_id": "task-2", "payload": "{}"})])]
+    redis = FakeRedisStream(new_rows=rows)
+    queue = _task_queue_with(redis)
+
+    assert queue.consume("worker-2") == rows[0][1]
+    assert len(redis.read_calls) == 1
+
+
+def test_queue_touch_refreshes_message_for_current_consumer():
+    redis = FakeRedisStream()
+    queue = _task_queue_with(redis)
+
+    queue.touch("1-0", "worker-3")
+
+    _, kwargs = redis.claim_calls[0]
+    assert kwargs["min_idle_time"] == 0
+    assert kwargs["message_ids"] == ["1-0"]
+    assert kwargs["justid"] is True
+
+
+def test_compose_starts_multiple_workers_after_database_migration():
+    compose = Path("docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "scale: ${WORKER_REPLICAS:-4}" in compose
+    assert "restart: unless-stopped" in compose
+    assert "mysql-migrate:" in compose
+    assert compose.count("condition: service_completed_successfully") == 2
 
 
 def test_task_status_returns_chat_events_and_answer(monkeypatch):

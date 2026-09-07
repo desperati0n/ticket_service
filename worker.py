@@ -11,7 +11,6 @@ from typing import Any
 from dotenv import load_dotenv
 
 from app.agent import AgentRequest, TicketAgent
-from app.ids import Snowflake
 from app.queue import TaskQueue
 from app.real_repositories import MongoRepository, MySQLRepository
 
@@ -24,6 +23,11 @@ def process_message(message_id: str, fields: dict[str, str], *, queue: Any, agen
     payload = json.loads(fields["payload"])
     updater = getattr(mongo, "update_task", None)
     event_appender = getattr(mongo, "append_task_event", None)
+    getter = getattr(mongo, "get_task", None)
+    existing = getter(task_id) if getter is not None else None
+    if existing is not None and existing.get("status") in {"success", "failed"}:
+        queue.acknowledge(message_id)
+        return
     if updater is not None:
         updater(task_id, status="processing", events=[])
     events: list[dict[str, Any]] = []
@@ -68,15 +72,15 @@ def process_message(message_id: str, fields: dict[str, str], *, queue: Any, agen
 
 def run_worker() -> None:
     """持续消费 Redis Stream。"""
-    worker_id = int(os.getenv("SNOWFLAKE_WORKER_ID", "2"))
-    mysql = MySQLRepository(Snowflake(worker_id=worker_id))
+    mysql = MySQLRepository()
     mongo = MongoRepository()
     queue = TaskQueue()
     agent = TicketAgent(mysql, mongo)
     consumer = os.getenv("REDIS_CONSUMER_NAME", socket.gethostname())
     while True:
         for message_id, fields in queue.consume(consumer):
-            process_message(message_id, fields, queue=queue, agent=agent, mongo=mongo)
+            with queue.maintain_ownership(message_id, consumer):
+                process_message(message_id, fields, queue=queue, agent=agent, mongo=mongo)
 
 
 if __name__ == "__main__":

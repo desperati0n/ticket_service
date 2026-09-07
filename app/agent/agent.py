@@ -133,7 +133,7 @@ class TicketAgent:
         """运行模型与业务 Tools 的循环，并产出可直接转为 SSE 的事件。"""
         conversation_id = request.conversation_id or str(uuid.uuid4())
         request_id = request.request_id or str(uuid.uuid4())
-        state = AgentSessionState(conversation_id=conversation_id)
+        state = AgentSessionState(conversation_id=conversation_id, request_id=request_id)
         log = self._start_log(conversation_id, request_id, request.message)
         sequence = 0
         tool_calls_used = 0

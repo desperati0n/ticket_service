@@ -117,6 +117,7 @@ class AgentSessionState(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     conversation_id: str | None = None
+    request_id: str | None = None
     employee: VerifiedEmployee | None = None
     asset: VerifiedAsset | None = None
     created_ticket_id: int | None = None

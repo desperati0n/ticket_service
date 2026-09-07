@@ -24,12 +24,14 @@ CREATE TABLE IF NOT EXISTS employee_assets (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS tickets (
-  id BIGINT NOT NULL PRIMARY KEY,
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(64) NULL,
   employee_id BIGINT NOT NULL,
   asset_id BIGINT NOT NULL,
   issue TEXT NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
   created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  CONSTRAINT uq_tickets_request_id UNIQUE (request_id),
   CONSTRAINT fk_tickets_employee FOREIGN KEY (employee_id) REFERENCES employees(id),
   CONSTRAINT fk_tickets_asset FOREIGN KEY (asset_id) REFERENCES assets(id)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
