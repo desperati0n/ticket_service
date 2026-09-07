@@ -1,11 +1,13 @@
-"""本模块定义 API 请求和 SSE 事件的数据模型。"""
+"""本模块定义 API 请求、响应和 SSE 事件的数据模型。"""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 
 InputType = Literal["structured", "text"]
+TaskStatus = Literal["queued", "processing", "success", "failed"]
 
 
 class TicketRequest(BaseModel):
@@ -39,4 +41,25 @@ class SSEEvent(BaseModel):
     step: str
     status: Literal["started", "success", "failed"]
     data: dict = Field(default_factory=dict)
+
+
+class QueuedTaskResponse(BaseModel):
+    """异步任务成功入队后的立即响应。"""
+
+    status: Literal["queued"]
+    task_id: str
+    conversation_id: str
+
+
+class TaskStatusResponse(BaseModel):
+    """后台任务当前状态和最终处理结果。"""
+
+    kind: Literal["async_task"] | None = None
+    task_id: str
+    input: dict = Field(default_factory=dict)
+    status: TaskStatus
+    ticket_id: int | None = None
+    error: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 

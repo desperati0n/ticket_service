@@ -48,6 +48,7 @@ services:
     ports:
       - "${APP_PORT:-8000}:8000"
     environment:
+      OPENAPI_TITLE: ${OPENAPI_TITLE:-IT 运维助手 Demo API}
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE:-ticket_service}

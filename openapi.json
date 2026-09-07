@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "IT 运维助手 Demo API",
-    "description": "内部 IT 运维助手的健康检查、结构化报修和自然语言 Agent 接口。流式接口使用 Server-Sent Events（SSE）返回处理进度。",
+    "description": "内部 IT 运维助手的同步、流式和后台队列接口。",
     "version": "0.1.0"
   },
   "servers": [
@@ -196,69 +196,71 @@
     },
     "/ticket/task": {
       "post": {
-        "tags": [
-          "tickets"
-        ],
-        "summary": "异步提交工单任务",
-        "operationId": "enqueue_ticket_task",
+        "summary": "Enqueue Ticket Task",
+        "description": "接收自然语言报修并立即投递到后台 Worker。",
+        "operationId": "enqueue_ticket_task_ticket_task_post",
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AgentRequest"
-              },
-              "example": {
-                "message": "我的 Dell 显示器坏了，工号 10086"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "202": {
-            "description": "任务已进入后台队列",
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QueuedTaskResponse"
-                },
-                "example": {
-                  "status": "queued",
-                  "task_id": "task_xxx",
-                  "conversation_id": "conversation_xxx"
                 }
               }
             }
           },
           "503": {
-            "description": "任务队列不可用"
+            "description": "任务队列暂时不可用"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
           }
         }
       }
     },
     "/ticket/task/{task_id}": {
       "get": {
-        "tags": [
-          "tickets"
-        ],
-        "summary": "查询异步任务状态",
-        "operationId": "get_ticket_task",
+        "summary": "Get Ticket Task",
+        "description": "查询后台任务状态和 Worker 写回的结果。",
+        "operationId": "get_ticket_task_ticket_task__task_id__get",
         "parameters": [
           {
             "name": "task_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "title": "Task Id"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "任务状态"
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatusResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "任务不存在"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
           }
         }
       }
@@ -487,26 +489,117 @@
         }
       },
       "QueuedTaskResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "queued",
+            "title": "Status"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          }
+        },
         "type": "object",
         "required": [
           "status",
           "task_id",
           "conversation_id"
         ],
+        "title": "QueuedTaskResponse",
+        "description": "异步任务成功入队后的立即响应。"
+      },
+      "TaskStatusResponse": {
         "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "async_task"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input"
+          },
           "status": {
             "type": "string",
             "enum": [
-              "queued"
-            ]
+              "queued",
+              "processing",
+              "success",
+              "failed"
+            ],
+            "title": "Status"
           },
-          "task_id": {
-            "type": "string"
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
           },
-          "conversation_id": {
-            "type": "string"
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
-        }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "status"
+        ],
+        "title": "TaskStatusResponse",
+        "description": "后台任务当前状态和最终处理结果。"
       }
     },
     "responses": {

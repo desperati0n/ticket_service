@@ -13,7 +13,7 @@ from .agent import AgentRequest, TicketAgent
 from .ids import Snowflake
 from .real_repositories import MongoRepository, MySQLRepository
 from .queue import TaskQueue
-from .schemas import TicketRequest
+from .schemas import QueuedTaskResponse, TaskStatusResponse, TicketRequest
 from .service import TicketFlow
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -24,7 +24,11 @@ flow = TicketFlow(mysql_repository, mongo_repository)
 ticket_agent = TicketAgent(mysql_repository, mongo_repository)
 task_queue = TaskQueue()
 
-app = FastAPI(title=os.getenv("APP_NAME", "IT运维助手 Demo"))
+app = FastAPI(
+    title=os.getenv("OPENAPI_TITLE", "IT 运维助手 Demo API"),
+    description="内部 IT 运维助手的同步、流式和后台队列接口。",
+    version="0.1.0",
+)
 
 #无AI业务逻辑
 def sse_stream(request: TicketRequest):
@@ -61,8 +65,13 @@ def chat_stream(request: AgentRequest):
     )
 
 
-@app.post("/ticket/task", status_code=status.HTTP_202_ACCEPTED)
-def enqueue_ticket_task(request: AgentRequest) -> dict[str, str]:
+@app.post(
+    "/ticket/task",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=QueuedTaskResponse,
+    responses={503: {"description": "任务队列暂时不可用"}},
+)
+def enqueue_ticket_task(request: AgentRequest) -> QueuedTaskResponse:
     """接收自然语言报修并立即投递到后台 Worker。"""
     task_id = request.request_id or str(uuid.uuid4())
     conversation_id = request.conversation_id or str(uuid.uuid4())
@@ -81,10 +90,15 @@ def enqueue_ticket_task(request: AgentRequest) -> dict[str, str]:
         if updater is not None:
             updater(task_id, status="failed", error=f"任务入队失败：{exc}")
         raise HTTPException(status_code=503, detail="任务队列暂时不可用") from exc
-    return {"status": "queued", "task_id": task_id, "conversation_id": conversation_id}
+    return QueuedTaskResponse(status="queued", task_id=task_id, conversation_id=conversation_id)
 
 
-@app.get("/ticket/task/{task_id}")
+@app.get(
+    "/ticket/task/{task_id}",
+    response_model=TaskStatusResponse,
+    response_model_exclude_none=True,
+    responses={404: {"description": "任务不存在"}},
+)
 def get_ticket_task(task_id: str) -> dict:
     """查询后台任务状态和 Worker 写回的结果。"""
     getter = getattr(mongo_repository, "get_task", None)

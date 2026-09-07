@@ -57,3 +57,28 @@ def test_openapi_request_schemas_match_runtime_required_fields():
         schemas["TicketRequest"]["properties"]
     )
     assert schemas["AgentRequest"]["required"] == ["message"]
+
+
+def test_async_task_openapi_matches_fastapi_runtime():
+    """静态规范应与 FastAPI 的异步任务方法、响应码和响应模型一致。"""
+    from app.main import app
+
+    spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    runtime = app.openapi()
+    cases = (("/ticket/task", "post"), ("/ticket/task/{task_id}", "get"))
+
+    for path, method in cases:
+        assert method in spec["paths"][path]
+        assert set(spec["paths"][path][method]["responses"]) == set(
+            runtime["paths"][path][method]["responses"]
+        )
+
+    queued_schema = spec["paths"]["/ticket/task"]["post"]["responses"]["202"]["content"][
+        "application/json"
+    ]["schema"]
+    assert queued_schema == {"$ref": "#/components/schemas/QueuedTaskResponse"}
+    assert set(spec["components"]["schemas"]["QueuedTaskResponse"]["required"]) == {
+        "status",
+        "task_id",
+        "conversation_id",
+    }
