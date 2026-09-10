@@ -62,7 +62,7 @@ flowchart LR
 
 ## 3. Skill 与外部 Agent
 
-Skill 不是服务器，也不执行 Python 代码。它是外部 Agent 的操作手册，规定：
+Skill 规定：
 
 - 创建必须依次调用 `verify_employee`、`verify_employee_asset`、`create_ticket`。
 - 缺少工号、资产或故障现象时追问，不能猜测。
@@ -289,29 +289,3 @@ erDiagram
 - 远程 MCP 配置强随机 `MCP_BEARER_TOKEN` 和 TLS。
 - 多个 MCP 实例使用不同的 `SNOWFLAKE_WORKER_ID`，范围 0 到 31。
 - 正式多用户部署使用 OAuth/OIDC 和用户级、工具级授权代替单一静态 Token。
-
-## 9. 配置、部署与测试
-
-关键配置包括 `MCP_HOST/PORT/PUBLIC_URL/BEARER_TOKEN`、Redis Stream/Consumer/TTL、Snowflake Worker ID，以及仅供 Backend 使用的 MySQL/MongoDB 参数。
-
-```powershell
-python -m pip install -e ".[test]"
-docker compose up -d mysql mongo redis
-python -m ticket_mcp.worker
-python -m ticket_mcp.server
-pytest -q
-python C:\Users\Endless\.codex\skills\.system\skill-creator\scripts\quick_validate.py skills\it-ticket-operations
-```
-
-## 10. 关键源码
-
-- `skills/it-ticket-operations/SKILL.md`：外部 Agent 工作流
-- `skills/it-ticket-operations/references/tool-contracts.md`：返回码与副作用
-- `skills/it-ticket-operations/agents/openai.yaml`：MCP 依赖声明
-- `ticket_mcp/server.py`：工具与鉴权
-- `ticket_mcp/queued_service.py`：入队、等待与超时
-- `ticket_mcp/queue.py`：Redis 命令和短期结果
-- `ticket_mcp/worker.py`：确定性白名单 Worker
-- `ticket_mcp/service.py`：业务规则与幂等
-- `ticket_mcp/repositories.py`：MySQL 与 MongoDB 审计
-- `ticket_mcp/ids.py`：Snowflake ID

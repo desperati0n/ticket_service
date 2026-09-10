@@ -224,23 +224,3 @@ MySQL 与 MongoDB 没有分布式事务。排障时以 MySQL 为业务真相，�
 docker compose up -d --build api worker mysql mongo redis
 pytest -q
 ```
-
-`mysql-migrate` 在 API 和 Worker 启动前处理已有数据卷。Redis Pending 超时必须大于消息心跳间隔，会话锁超时必须大于锁刷新间隔。
-
-## 9. 已知限制
-
-- SSE 通过轮询 MongoDB 转发事件，高负载下可考虑 Change Streams 或专用事件通道。
-- MySQL 与 MongoDB 缺少跨库事务，可增加 Outbox、审计补偿和失败告警。
-- 历史只恢复用户与助手文本，不恢复可信验证对象，因此新一轮执行可能重新验证。
-- 资产匹配采用名称或资产编号包含关系，当前主项目没有显式处理多个匹配候选。
-- README 首行“无 AI”是早期描述，当前内置 Agent 已实现。
-
-## 10. 关键源码
-
-- `app/main.py`：HTTP/SSE 与入队
-- `worker.py`：队列之后的 Agent/结构化执行
-- `app/agent/agent.py`：LLM 与工具循环
-- `app/agent/tools.py`：业务工具与可信状态
-- `app/queue.py`：Redis Streams、心跳和会话锁
-- `app/real_repositories.py`：MySQL/MongoDB 仓储
-- `mysql/init.sql`、`mysql/migrate.sql`：表结构与迁移
