@@ -1,16 +1,16 @@
-# `ticket_service_skill` Skill/MCP 技术架构
+# MCP Server 技术架构
 
-> 对应工程：同级仓库 `ticket_service_skill`
+> 对应目录：`ticket_service_skill/ticket_mcp/`
 >
 > 基线日期：2026-09-10
 
 ## 1. 定位与关键顺序
 
-该工程把 Agent 推理与工单后端分离。Skill 由外部宿主加载，外部 LLM 先理解用户意图并决定调用哪个 MCP 工具，工具请求随后才进入 Redis 队列。
+MCP Server 把外部 Agent 推理与工单后端分离。外部 LLM 先理解用户意图并决定调用哪个工具，MCP 收到工具请求后才写入 Redis 队列。
 
 核心顺序是：
 
-`用户 → 外部 LLM Agent → Skill 约束 → MCP → Redis 队列 → Backend Worker → MySQL/MongoDB`
+`用户 → 外部 LLM Agent → MCP → Redis 队列 → Backend Worker → MySQL/MongoDB`
 
 因此，这套架构是“先 LLM，后队列”。MCP 前端和 Backend Worker 都不调用 LLM；Worker 只执行白名单内的确定性业务规则。
 
@@ -23,7 +23,6 @@ flowchart LR
     user[员工]
     host[外部 Agent 宿主]
     llm[外部 LLM]
-    skill[IT Ticket Skill]
     auth[Bearer Token 校验]
     mcp[MCP Frontend]
     redis[(Redis Streams 与结果键)]
@@ -32,7 +31,6 @@ flowchart LR
     mongo[(MongoDB 工具审计)]
 
     user -->|自然语言| host
-    host -->|加载规则| skill
     host -->|模型推理| llm
     llm -->|决定工具与参数| host
     host -->|MCP Tool Call| auth
@@ -51,8 +49,6 @@ flowchart LR
 
 | 组件 | Skill 工程位置 | 职责 |
 | --- | --- | --- |
-| Skill | `skills/it-ticket-operations/SKILL.md` | 约束外部 Agent 的工具选择、追问、重试与确认流程 |
-| Skill 元数据 | `skills/it-ticket-operations/agents/openai.yaml` | 声明显示信息和 `itTicketService` MCP 依赖 |
 | MCP Frontend | `ticket_mcp/server.py` | 鉴权、工具定义、参数入口、入队和等待结果 |
 | Queue Facade | `ticket_mcp/queued_service.py` | 生成任务 ID、预分配工单 ID、统一超时和错误语义 |
 | Redis Adapter | `ticket_mcp/queue.py` | Stream 命令、短期结果键、Consumer Group 与心跳 |
@@ -60,39 +56,11 @@ flowchart LR
 | TicketService | `ticket_mcp/service.py` | 确定性校验、幂等、CRUD 和审计调用 |
 | Repositories | `ticket_mcp/repositories.py` | MySQL 业务数据和 MongoDB 写操作审计 |
 
-## 3. Skill 与外部 Agent
+## 3. Server 边界
 
-Skill 规定：
+每次 MCP 工具调用都是一个独立队列任务。创建工单时的员工验证、资产验证和建单不是 Worker 内的一次长事务，而是上游 Agent 根据工具结果依次发起的三个请求。`create_ticket` 会在最终写入前重新校验员工与资产归属。
 
-- 创建必须依次调用 `verify_employee`、`verify_employee_asset`、`create_ticket`。
-- 缺少工号、资产或故障现象时追问，不能猜测。
-- `ASSET_AMBIGUOUS` 必须向用户展示候选并等待选择。
-- 删除先以 `confirmed=false` 获取预览，明确确认后才传 `true`。
-- 同一次创建意图的重试复用 `request_id`。
-- 对用户展示 `ticket_id`，不能把内部 `task_id` 当工单号。
-
-每次 MCP 工具调用都是一个独立队列任务。前三个创建工具不是 Worker 内的一次长事务，而是外部 LLM 按工具结果依次发起的三个请求。`create_ticket` 会在最终写入前重新校验员工与资产归属，因此前两次调用主要用于对话引导和提前发现错误。
-
-### 图 2：外部 LLM 的工具路由
-
-```mermaid
-flowchart TD
-    user([用户自然语言]) --> llm{外部 LLM 判断意图}
-    llm -->|创建| collect{信息是否完整}
-    collect -->|否| ask([向用户追问])
-    collect -->|是| employee[调用 verify_employee]
-    employee --> employeeOk{员工通过}
-    employeeOk -->|否| stop([解释错误并停止])
-    employeeOk -->|是| asset[调用 verify_employee_asset]
-    asset --> assetResult{资产匹配结果}
-    assetResult -->|零个| askAsset([补充资产描述])
-    assetResult -->|多个| choose([展示候选并等待选择])
-    assetResult -->|唯一| create[调用 create_ticket]
-    create --> result([返回 ticket_id 与状态])
-    llm -->|查询| query[get_ticket 或 list_tickets]
-    llm -->|修改| update[update_ticket]
-    llm -->|删除| preview[delete_ticket confirmed=false]
-```
+Standalone Skill 如何约束上游 Agent，见 [Standalone Skill 与安装包说明](standalone-skill.md)。
 
 ## 4. MCP 工具契约
 
@@ -125,7 +93,7 @@ MCP 服务使用 Streamable HTTP `/mcp`，公开 8 个受控工具：
 
 ## 5. 创建工单时序
 
-### 图 3：先 LLM、后队列的完整创建流程
+### 图 2：先 LLM、后队列的完整创建流程
 
 ```mermaid
 sequenceDiagram
@@ -182,7 +150,7 @@ sequenceDiagram
 
 Redis Stream 默认为 `ticket_commands`，Consumer Group 为 `ticket_backends`。MCP 为每次工具调用生成 UUID `task_id`，并使用 `ticket_mcp_task:{task_id}` 保存短期状态和结果。
 
-### 图 4：单次工具任务状态机
+### 图 3：单次工具任务状态机
 
 ```mermaid
 stateDiagram-v2
@@ -214,7 +182,7 @@ stateDiagram-v2
 - 同一 `request_id` 对应不同员工、资产或故障时返回 `IDEMPOTENCY_CONFLICT`。
 - 最终写入前重新校验员工状态和资产归属，变化时返回 `VERIFICATION_EXPIRED`。
 
-### 图 5：删除确认时序
+### 图 4：删除确认时序
 
 ```mermaid
 sequenceDiagram
@@ -245,7 +213,7 @@ sequenceDiagram
 
 ## 8. 数据与安全边界
 
-### 图 6：MCP 工程关系模型
+### 图 5：MCP 工程关系模型
 
 ```mermaid
 erDiagram

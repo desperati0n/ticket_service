@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ticket-service-mcp"
+version = "0.1.0"
+description = "Queued MCP server and Agent Skill for internal IT ticket operations"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp>=2.2,<3",
+  "pydantic>=2.12,<3",
+  "python-dotenv>=1.0,<2",
+  "sqlalchemy>=2.0,<3",
+  "pymysql>=1.1,<2",
+  "pymongo>=4.8,<5",
+  "redis>=5,<7",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9", "pytest-asyncio>=0.23,<1", "pyyaml>=6,<7"]
+
+[project.scripts]
+ticket-mcp = "ticket_mcp.server:main"
+ticket-backend = "ticket_mcp.worker:main"
+
+[tool.setuptools.packages.find]
+include = ["ticket_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+asyncio_mode = "auto"

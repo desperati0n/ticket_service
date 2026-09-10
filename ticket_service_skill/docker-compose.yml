@@ -1,0 +1,93 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-root-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ticket_service}
+      MYSQL_USER: ${MYSQL_USER:-ticket_service}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo:
+    image: mongo:8
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mcp:
+    build: .
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8000
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-http://127.0.0.1:8000}
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-}
+      MCP_QUEUE_TIMEOUT_SECONDS: ${MCP_QUEUE_TIMEOUT_SECONDS:-30}
+      MCP_QUEUE_POLL_INTERVAL_SECONDS: ${MCP_QUEUE_POLL_INTERVAL_SECONDS:-0.1}
+      SNOWFLAKE_WORKER_ID: ${SNOWFLAKE_WORKER_ID:-1}
+      REDIS_URL: redis://redis:6379/0
+      REDIS_STREAM: ${REDIS_STREAM:-ticket_commands}
+      REDIS_CONSUMER_GROUP: ${REDIS_CONSUMER_GROUP:-ticket_backends}
+      REDIS_RESULT_TTL_SECONDS: ${REDIS_RESULT_TTL_SECONDS:-86400}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  backend:
+    build: .
+    command: ["python", "-m", "ticket_mcp.worker"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      REDIS_STREAM: ${REDIS_STREAM:-ticket_commands}
+      REDIS_CONSUMER_GROUP: ${REDIS_CONSUMER_GROUP:-ticket_backends}
+      REDIS_PENDING_IDLE_MS: ${REDIS_PENDING_IDLE_MS:-120000}
+      REDIS_HEARTBEAT_INTERVAL_SECONDS: ${REDIS_HEARTBEAT_INTERVAL_SECONDS:-30}
+      REDIS_RESULT_TTL_SECONDS: ${REDIS_RESULT_TTL_SECONDS:-86400}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ticket_service}
+      MYSQL_USER: ${MYSQL_USER:-ticket_service}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: ${MONGO_DATABASE:-ticket_service}
+      MONGO_COLLECTION: ${MONGO_COLLECTION:-conversation_logs}
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  mongo_data:
+  redis_data:

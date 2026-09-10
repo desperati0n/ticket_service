@@ -18,3 +18,5 @@ htmlcov/
 *.log
 *.zip
 *.tar.gz
+!ticket_service_skill/it-ticket-client-bundle-20260908.zip
+agents.md
